@@ -11,7 +11,7 @@
 // Default AP mode settings
 #define DEFAULT_AP_SSID "ESP32-CAM-Setup"
 #define DEFAULT_AP_PASSWORD "12345678"
-#define DEFAULT_AP_TIMEOUT_MS (5 * 60 * 1000) // 5 minutes
+// Timeout removed - captive portal stays active until WiFi is configured
 
 // Default camera settings
 #define DEFAULT_FRAMESIZE FRAMESIZE_SVGA  // 800x600

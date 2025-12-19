@@ -90,7 +90,8 @@ String scanWiFiNetworks() {
 bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
     Serial.printf("Connecting to WiFi: %s\n", ssid);
     
-    WiFi.mode(WIFI_STA);
+    // Keep AP mode active during connection attempt to maintain captive portal
+    WiFi.mode(WIFI_AP_STA);
     WiFi.begin(ssid, password);
     
     unsigned long start = millis();

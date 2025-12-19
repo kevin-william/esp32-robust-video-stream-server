@@ -105,16 +105,16 @@ void setup() {
         Serial.println("Connected to WiFi");
         Serial.print("IP Address: ");
         Serial.println(WiFi.localIP());
+        
+        // Initialize camera only after WiFi connection
+        if (initCamera()) {
+            Serial.println("Camera initialized successfully");
+        } else {
+            Serial.println("WARNING: Camera initialization failed");
+        }
     }
     
-    // Initialize camera
-    if (initCamera()) {
-        Serial.println("Camera initialized successfully");
-    } else {
-        Serial.println("WARNING: Camera initialization failed");
-    }
-    
-    // Initialize web server
+    // Initialize web server (always needed for captive portal or normal operation)
     initWebServer();
     Serial.println("Web server started");
     
@@ -161,12 +161,8 @@ void loop() {
     if (ap_mode_active) {
         handleCaptivePortal();
         
-        // Check timeout (5 minutes)
-        if (millis() - system_start_time > DEFAULT_AP_TIMEOUT_MS) {
-            Serial.println("AP mode timeout reached, restarting...");
-            delay(1000);
-            ESP.restart();
-        }
+        // No timeout - keep captive portal active until WiFi is configured
+        // This ensures the device remains accessible for configuration
     }
     
     // Process events from queue
@@ -176,8 +172,18 @@ void loop() {
             case EVENT_WIFI_CONNECTED:
                 wifi_connected = true;
                 if (ap_mode_active) {
+                    Serial.println("WiFi connected successfully, stopping captive portal...");
                     stopCaptivePortal();
                     ap_mode_active = false;
+                    
+                    // Initialize camera now that we have WiFi connection
+                    if (!camera_initialized) {
+                        if (initCamera()) {
+                            Serial.println("Camera initialized after WiFi connection");
+                        } else {
+                            Serial.println("WARNING: Camera initialization failed after WiFi connection");
+                        }
+                    }
                 }
                 Serial.println("WiFi connected event received");
                 break;
@@ -185,6 +191,9 @@ void loop() {
             case EVENT_WIFI_DISCONNECTED:
                 wifi_connected = false;
                 Serial.println("WiFi disconnected event received");
+                Serial.println("Note: Captive portal will NOT restart automatically");
+                Serial.println("Device will attempt to reconnect to known networks");
+                // Do not restart captive portal - maintain current operation mode
                 break;
                 
             case EVENT_CONFIG_UPDATED:

@@ -99,9 +99,9 @@ pio device monitor -b 115200
 3. **Open browser** and navigate to `http://192.168.4.1`
 4. **Scan for networks** and select your WiFi network
 5. **Enter password** and click Connect
-6. **Device will restart** and connect to your WiFi network
+6. **Device will connect** to your WiFi network and automatically disable the captive portal
 
-**Note**: The captive portal remains active for 5 minutes. If not configured within this time, the device restarts.
+**Note**: The captive portal remains active indefinitely until a successful WiFi connection is established. The device will not restart automatically or timeout - it stays accessible for configuration until properly connected to a network. Camera and video streaming services are only activated after WiFi connection is successful.
 
 ### After WiFi Connection
 

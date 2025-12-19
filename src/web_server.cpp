@@ -65,8 +65,9 @@ void initWebServer() {
         html += "<div class='container'><h1>ESP32-CAM Control Panel</h1>";
         
         if (ap_mode_active) {
-            html += "<div class='status'>Configuration Mode - Connect to WiFi</div>";
+            html += "<div class='status'>Configuration Mode - Device will remain in this mode until WiFi is successfully configured</div>";
             html += "<h2>WiFi Setup</h2>";
+            html += "<p><strong>Note:</strong> This device will stay in configuration mode until you successfully connect to a WiFi network. There is no automatic timeout.</p>";
             html += "<button onclick='scanNetworks()'>Scan Networks</button>";
             html += "<div id='networks'></div>";
             html += "<h3>Manual Configuration</h3>";
