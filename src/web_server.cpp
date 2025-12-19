@@ -111,7 +111,15 @@ void initWebServer() {
     server.on("/wake", HTTP_GET, handleWake);
     server.on("/restart", HTTP_GET, handleRestart);
     server.on("/wifi-scan", HTTP_GET, handleWiFiScan);
-    server.on("/wifi-connect", HTTP_POST, handleWiFiConnect);
+    
+    // POST endpoint with body handler
+    server.on("/wifi-connect", HTTP_POST, 
+        [](AsyncWebServerRequest *request) {
+            // This is called after body is received
+        },
+        NULL,
+        handleWiFiConnect
+    );
     
     server.onNotFound(handleNotFound);
     
@@ -350,7 +358,9 @@ void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len
         DeserializationError error = deserializeJson(doc, body);
         
         if (error) {
-            request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+            AsyncWebServerResponse *response = request->beginResponse(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+            addCORSHeaders(response);
+            request->send(response);
             return;
         }
         
@@ -358,7 +368,9 @@ void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len
         const char* password = doc["password"];
         
         if (!ssid || !password) {
-            request->send(400, "application/json", "{\"error\":\"Missing ssid or password\"}");
+            AsyncWebServerResponse *response = request->beginResponse(400, "application/json", "{\"error\":\"Missing ssid or password\"}");
+            addCORSHeaders(response);
+            request->send(response);
             return;
         }
         
@@ -374,9 +386,13 @@ void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len
                 saveConfiguration();
             }
             
-            request->send(200, "application/json", "{\"success\":true,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+            AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true,\"ip\":\"" + WiFi.localIP().toString() + "\"}");
+            addCORSHeaders(response);
+            request->send(response);
         } else {
-            request->send(500, "application/json", "{\"success\":false,\"message\":\"Connection failed\"}");
+            AsyncWebServerResponse *response = request->beginResponse(500, "application/json", "{\"success\":false,\"message\":\"Connection failed\"}");
+            addCORSHeaders(response);
+            request->send(response);
         }
     }
 }
