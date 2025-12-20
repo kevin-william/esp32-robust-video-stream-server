@@ -2,6 +2,7 @@
 #include "app.h"
 #include "config.h"
 #include "captive_portal.h"
+#include "diagnostics.h"
 #include <ArduinoJson.h>
 #include <esp_camera.h>
 #include <mbedtls/sha256.h>
@@ -118,6 +119,15 @@ void initWebServer() {
     
     // API endpoints
     server.on("/status", HTTP_GET, handleStatus);
+    server.on("/diagnostics", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String json = getDiagnosticsJSON();
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", json);
+        addCORSHeaders(response);
+        request->send(response);
+    });
+    server.on("/diag", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->redirect("/diagnostics.html");
+    });
     server.on("/sleepstatus", HTTP_GET, handleSleepStatus);
     server.on("/capture", HTTP_GET, handleCapture);
     server.on("/stream", HTTP_GET, handleStream);
@@ -231,8 +241,13 @@ void handleStream(AsyncWebServerRequest *request) {
             camera_fb_t *fb = esp_camera_fb_get();
             if (!fb) {
                 Serial.println("Camera capture failed");
+                g_diag.frame_errors++;
                 return 0; // End stream
             }
+            
+            // Update diagnostics
+            updateFrameStats();
+            g_diag.total_bytes_sent += fb->len;
             
             // Build the multipart response
             String header = "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: " + String(fb->len) + "\r\n\r\n";

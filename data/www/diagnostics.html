@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-CAM Diagnostics</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        .card h2 {
+            color: #569cd6;
+            font-size: 16px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 5px;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 13px;
+        }
+        .metric-label { color: #9cdcfe; }
+        .metric-value {
+            color: #ce9178;
+            font-weight: bold;
+        }
+        .status-ok { color: #4ec9b0; }
+        .status-warning { color: #dcdcaa; }
+        .status-error { color: #f48771; }
+        .refresh-info {
+            text-align: center;
+            color: #858585;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #3e3e42;
+            border-radius: 4px;
+            margin: 5px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ec9b0, #569cd6);
+            transition: width 0.3s ease;
+        }
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover { background: #1177bb; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .badge-ok { background: #4ec9b033; color: #4ec9b0; }
+        .badge-warning { background: #dcdcaa33; color: #dcdcaa; }
+        .badge-error { background: #f4877133; color: #f48771; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 ESP32-CAM Diagnostics Dashboard</h1>
+        
+        <div style="margin-bottom: 20px;">
+            <button onclick="updateDiagnostics()">🔄 Refresh Now</button>
+            <button onclick="toggleAutoRefresh()">⏸️ <span id="auto-status">Pause</span></button>
+            <button onclick="window.location.href='/'">🏠 Home</button>
+        </div>
+
+        <div class="grid">
+            <!-- System Info -->
+            <div class="card">
+                <h2>🖥️ System</h2>
+                <div id="system-info"></div>
+            </div>
+
+            <!-- Memory -->
+            <div class="card">
+                <h2>💾 Memory</h2>
+                <div id="memory-info"></div>
+            </div>
+
+            <!-- Streaming -->
+            <div class="card">
+                <h2>📹 Streaming</h2>
+                <div id="streaming-info"></div>
+            </div>
+
+            <!-- WiFi -->
+            <div class="card">
+                <h2>📡 WiFi</h2>
+                <div id="wifi-info"></div>
+            </div>
+
+            <!-- Tasks -->
+            <div class="card">
+                <h2>⚙️ Tasks</h2>
+                <div id="tasks-info"></div>
+            </div>
+
+            <!-- Performance -->
+            <div class="card">
+                <h2>⚡ Performance</h2>
+                <div id="performance-info"></div>
+            </div>
+
+            <!-- Health -->
+            <div class="card">
+                <h2>🏥 Health</h2>
+                <div id="health-info"></div>
+            </div>
+        </div>
+
+        <div class="refresh-info">
+            Last updated: <span id="last-update">Never</span> | 
+            Auto-refresh: <span id="refresh-interval">2s</span>
+        </div>
+    </div>
+
+    <script>
+        const ESP32_IP = window.location.origin;
+        let autoRefresh = true;
+        let refreshTimer;
+
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+            if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+            return `${minutes}m ${secs}s`;
+        }
+
+        function progressBar(percent) {
+            return `<div class="progress-bar"><div class="progress-fill" style="width: ${percent}%"></div></div>`;
+        }
+
+        function metric(label, value) {
+            return `<div class="metric"><span class="metric-label">${label}</span><span class="metric-value">${value}</span></div>`;
+        }
+
+        async function updateDiagnostics() {
+            try {
+                const response = await fetch(`${ESP32_IP}/diagnostics`);
+                const data = await response.json();
+
+                // System
+                document.getElementById('system-info').innerHTML = `
+                    ${metric('Uptime', formatUptime(data.system.uptime_sec))}
+                    ${metric('CPU Freq', data.system.cpu_freq_mhz + ' MHz')}
+                    ${metric('Chip', data.system.chip_model + ' rev' + data.system.chip_revision)}
+                    ${metric('Cores', data.system.cpu_cores)}
+                    ${metric('SDK', data.system.sdk_version)}
+                `;
+
+                // Memory
+                const heapPct = data.memory.heap_usage_pct.toFixed(1);
+                document.getElementById('memory-info').innerHTML = `
+                    ${metric('Heap Size', formatBytes(data.memory.heap_size))}
+                    ${metric('Free Heap', formatBytes(data.memory.free_heap))}
+                    ${metric('Min Free', formatBytes(data.memory.min_free_heap))}
+                    ${metric('Usage', heapPct + '%')}
+                    ${progressBar(heapPct)}
+                    ${data.memory.psram_available !== false ? `
+                        ${metric('PSRAM Size', formatBytes(data.memory.psram_size))}
+                        ${metric('Free PSRAM', formatBytes(data.memory.free_psram))}
+                        ${metric('PSRAM Usage', data.memory.psram_usage_pct.toFixed(1) + '%')}
+                        ${progressBar(data.memory.psram_usage_pct)}
+                    ` : metric('PSRAM', 'Not Available')}
+                `;
+
+                // Streaming
+                const fps = data.streaming.fps.toFixed(2);
+                const fpsClass = fps > 10 ? 'status-ok' : fps > 5 ? 'status-warning' : 'status-error';
+                document.getElementById('streaming-info').innerHTML = `
+                    ${metric('FPS', `<span class="${fpsClass}">${fps}</span>`)}
+                    ${metric('Total Frames', data.streaming.total_frames)}
+                    ${metric('Frame Errors', data.streaming.frame_errors)}
+                    ${metric('Error Rate', data.streaming.error_rate_pct.toFixed(2) + '%')}
+                    ${metric('Last Frame', data.streaming.last_frame_ms_ago + ' ms ago')}
+                    ${metric('Bytes Sent', formatBytes(data.streaming.total_bytes_sent))}
+                    ${metric('Camera', data.streaming.camera_initialized ? '✓ Init' : '✗ Not Init')}
+                    ${metric('State', data.streaming.camera_sleeping ? 'Sleeping' : 'Active')}
+                `;
+
+                // WiFi
+                document.getElementById('wifi-info').innerHTML = data.wifi.connected ? `
+                    ${metric('SSID', data.wifi.ssid)}
+                    ${metric('RSSI', data.wifi.rssi + ' dBm')}
+                    ${metric('IP', data.wifi.ip)}
+                    ${metric('Gateway', data.wifi.gateway)}
+                    ${metric('DNS', data.wifi.dns)}
+                    ${metric('Channel', data.wifi.channel)}
+                    ${metric('TX Power', data.wifi.tx_power)}
+                    ${metric('Reconnects', data.wifi.reconnects)}
+                ` : `
+                    ${metric('Status', 'Disconnected')}
+                    ${metric('AP Mode', data.wifi.ap_mode_active ? 'Active' : 'Inactive')}
+                `;
+
+                // Tasks
+                let tasksHtml = '';
+                if (data.tasks.camera_task) {
+                    tasksHtml += `<div style="margin-bottom: 10px;">
+                        <strong>Camera Task</strong>
+                        ${metric('State', data.tasks.camera_task.state)}
+                        ${metric('Priority', data.tasks.camera_task.priority)}
+                        ${metric('Stack Free', data.tasks.camera_task.stack_hwm + ' bytes')}
+                    </div>`;
+                }
+                if (data.tasks.web_task) {
+                    tasksHtml += `<div style="margin-bottom: 10px;">
+                        <strong>Web Task</strong>
+                        ${metric('State', data.tasks.web_task.state)}
+                        ${metric('Priority', data.tasks.web_task.priority)}
+                        ${metric('Stack Free', data.tasks.web_task.stack_hwm + ' bytes')}
+                    </div>`;
+                }
+                tasksHtml += metric('Overruns', data.tasks.overruns);
+                document.getElementById('tasks-info').innerHTML = tasksHtml;
+
+                // Performance
+                document.getElementById('performance-info').innerHTML = `
+                    ${metric('Target Frame Time', data.performance.frame_time_target_ms + ' ms')}
+                    ${metric('Actual Frame Time', data.performance.actual_frame_time_ms.toFixed(2) + ' ms')}
+                    ${metric('Heap Fragmentation', data.performance.heap_fragmentation_pct.toFixed(2) + '%')}
+                `;
+
+                // Health
+                const statusClass = data.health.overall === 'ok' ? 'badge-ok' : 
+                                  data.health.overall === 'warning' ? 'badge-warning' : 'badge-error';
+                let healthHtml = `<div style="margin-bottom: 10px;">
+                    <span class="badge ${statusClass}">${data.health.overall.toUpperCase()}</span>
+                </div>`;
+                
+                if (data.health.warnings.length > 0) {
+                    healthHtml += '<div style="color: #dcdcaa; font-size: 12px; margin-bottom: 5px;"><strong>⚠️ Warnings:</strong></div>';
+                    data.health.warnings.forEach(w => {
+                        healthHtml += `<div style="font-size: 11px; padding: 2px 0;">• ${w}</div>`;
+                    });
+                }
+                
+                if (data.health.errors.length > 0) {
+                    healthHtml += '<div style="color: #f48771; font-size: 12px; margin: 5px 0;"><strong>❌ Errors:</strong></div>';
+                    data.health.errors.forEach(e => {
+                        healthHtml += `<div style="font-size: 11px; padding: 2px 0;">• ${e}</div>`;
+                    });
+                }
+                
+                if (data.health.warnings.length === 0 && data.health.errors.length === 0) {
+                    healthHtml += '<div style="color: #4ec9b0; font-size: 12px;">✓ All systems normal</div>';
+                }
+                
+                document.getElementById('health-info').innerHTML = healthHtml;
+
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            } catch (error) {
+                console.error('Failed to fetch diagnostics:', error);
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('auto-status').textContent = autoRefresh ? 'Pause' : 'Resume';
+            
+            if (autoRefresh) {
+                startAutoRefresh();
+            } else {
+                clearInterval(refreshTimer);
+            }
+        }
+
+        function startAutoRefresh() {
+            refreshTimer = setInterval(updateDiagnostics, 2000);
+        }
+
+        // Initial load
+        updateDiagnostics();
+        startAutoRefresh();
+    </script>
+</body>
+</html>

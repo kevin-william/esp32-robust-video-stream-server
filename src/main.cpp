@@ -20,6 +20,7 @@
 #include "storage.h"
 #include "captive_portal.h"
 #include "web_server.h"
+#include "diagnostics.h"
 
 // Global variables
 TaskHandle_t cameraTaskHandle = NULL;
@@ -63,6 +64,10 @@ void setup() {
     // Initialize GPIO 0 for factory reset button
     pinMode(0, INPUT_PULLUP);
     Serial.println("Factory reset: Hold GPIO 0 button for 5 seconds");
+    
+    // Initialize diagnostics
+    initDiagnostics();
+    Serial.println("Diagnostics initialized");
     
     // Initialize LED
     initLED();
