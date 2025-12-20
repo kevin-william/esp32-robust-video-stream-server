@@ -133,33 +133,6 @@ parse_config:
                             }
                         }
                     }
-                    
-                    if (network.containsKey("subnet")) {
-                        JsonArray sn = network["subnet"];
-                        if (sn.size() == 4) {
-                            for (int i = 0; i < 4; i++) {
-                                g_config.networks[g_config.network_count].subnet[i] = sn[i];
-                            }
-                        }
-                    }
-                    
-                    if (network.containsKey("dns1")) {
-                        JsonArray dns = network["dns1"];
-                        if (dns.size() == 4) {
-                            for (int i = 0; i < 4; i++) {
-                                g_config.networks[g_config.network_count].dns1[i] = dns[i];
-                            }
-                        }
-                    }
-                    
-                    if (network.containsKey("dns2")) {
-                        JsonArray dns = network["dns2"];
-                        if (dns.size() == 4) {
-                            for (int i = 0; i < 4; i++) {
-                                g_config.networks[g_config.network_count].dns2[i] = dns[i];
-                            }
-                        }
-                    }
                 }
                 
                 g_config.network_count++;
@@ -230,15 +203,6 @@ bool saveConfiguration() {
             
             JsonArray gw = network.createNestedArray("gateway");
             for (int j = 0; j < 4; j++) gw.add(g_config.networks[i].gateway[j]);
-            
-            JsonArray sn = network.createNestedArray("subnet");
-            for (int j = 0; j < 4; j++) sn.add(g_config.networks[i].subnet[j]);
-            
-            JsonArray dns1 = network.createNestedArray("dns1");
-            for (int j = 0; j < 4; j++) dns1.add(g_config.networks[i].dns1[j]);
-            
-            JsonArray dns2 = network.createNestedArray("dns2");
-            for (int j = 0; j < 4; j++) dns2.add(g_config.networks[i].dns2[j]);
         }
     }
     
