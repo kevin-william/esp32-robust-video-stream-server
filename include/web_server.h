@@ -20,6 +20,7 @@ void handleControl(AsyncWebServerRequest *request);
 void handleSleep(AsyncWebServerRequest *request);
 void handleWake(AsyncWebServerRequest *request);
 void handleRestart(AsyncWebServerRequest *request);
+void handleFactoryReset(AsyncWebServerRequest *request);
 void handleWiFiScan(AsyncWebServerRequest *request);
 void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleConfig(AsyncWebServerRequest *request);

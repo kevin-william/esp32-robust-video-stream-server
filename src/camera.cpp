@@ -30,15 +30,17 @@ bool initCamera() {
     
     // Init with high specs to pre-allocate larger buffers
     if (psramFound()) {
-        config.frame_size = FRAMESIZE_UXGA;
+        config.frame_size = FRAMESIZE_VGA;  // Start with VGA for better compatibility
         config.jpeg_quality = 10;
-        config.fb_count = 2;
-        Serial.println("PSRAM found, using high quality settings");
+        config.fb_count = 2;  // Double buffering for smooth streaming
+        config.grab_mode = CAMERA_GRAB_LATEST; // Always get latest frame
+        Serial.println("PSRAM found, using optimized streaming settings");
     } else {
-        config.frame_size = FRAMESIZE_SVGA;
+        config.frame_size = FRAMESIZE_HVGA;
         config.jpeg_quality = 12;
         config.fb_count = 1;
-        Serial.println("PSRAM not found, using lower quality settings");
+        config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+        Serial.println("PSRAM not found, using conservative settings");
     }
     
     // Camera init

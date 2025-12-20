@@ -15,8 +15,8 @@
 // Timeout removed - captive portal stays active until WiFi is configured
 
 // Default camera settings
-#define DEFAULT_FRAMESIZE FRAMESIZE_SVGA  // 800x600
-#define DEFAULT_QUALITY 12                 // 0-63, lower is better
+#define DEFAULT_FRAMESIZE FRAMESIZE_HVGA  // 480x320 - optimized for performance
+#define DEFAULT_QUALITY 10                 // 0-63, lower is better (10 = good quality/speed balance)
 #define DEFAULT_BRIGHTNESS 0               // -2 to 2
 #define DEFAULT_CONTRAST 0                 // -2 to 2
 #define DEFAULT_SATURATION 0               // -2 to 2
@@ -42,6 +42,12 @@ struct WiFiNetwork {
     char ssid[32];
     char password[64];
     int priority;  // Higher is preferred
+    bool use_static_ip;
+    uint8_t static_ip[4];
+    uint8_t gateway[4];
+    uint8_t subnet[4];
+    uint8_t dns1[4];
+    uint8_t dns2[4];
 };
 
 // Camera settings structure

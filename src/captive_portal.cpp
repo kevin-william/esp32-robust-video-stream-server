@@ -88,7 +88,7 @@ String scanWiFiNetworks() {
 }
 
 bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
-    Serial.printf("Connecting to WiFi: %s\n", ssid);
+    Serial.printf("Attempting to connect to WiFi: %s\n", ssid);
     
     // Keep AP mode active during connection attempt to maintain captive portal
     WiFi.mode(WIFI_AP_STA);
@@ -102,8 +102,56 @@ bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
     Serial.println();
     
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("WiFi Connected!");
-        Serial.print("IP Address: ");
+        Serial.println("✓ WiFi Connected successfully!");
+        Serial.print("  IP Address: ");
+        Serial.println(WiFi.localIP());
+        Serial.print("  RSSI: ");
+        Serial.print(WiFi.RSSI());
+        Serial.println(" dBm");
+        
+        // Send event
+        Event event;
+        event.type = EVENT_WIFI_CONNECTED;
+        event.data = 0;
+        event.ptr = nullptr;
+        xQueueSend(eventQueue, &event, 0);
+        
+        return true;
+    }
+    
+    Serial.println("✗ WiFi Connection Failed!");
+    Serial.println("  Staying in captive portal mode");
+    return false;
+}
+
+bool connectToWiFiWithStaticIP(const char* ssid, const char* password, 
+                                 IPAddress ip, IPAddress gateway, 
+                                 IPAddress subnet, IPAddress dns1, 
+                                 IPAddress dns2, int timeout_ms) {
+    Serial.printf("Attempting to connect to WiFi with static IP: %s\n", ssid);
+    Serial.printf("  Static IP: %s\n", ip.toString().c_str());
+    Serial.printf("  Gateway: %s\n", gateway.toString().c_str());
+    
+    // Configure static IP
+    if (!WiFi.config(ip, gateway, subnet, dns1, dns2)) {
+        Serial.println("✗ Failed to configure static IP");
+        return false;
+    }
+    
+    // Keep AP mode active during connection attempt
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.begin(ssid, password);
+    
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < timeout_ms) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println();
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("✓ WiFi Connected successfully with static IP!");
+        Serial.print("  IP Address: ");
         Serial.println(WiFi.localIP());
         
         // Send event
@@ -116,7 +164,8 @@ bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
         return true;
     }
     
-    Serial.println("WiFi Connection Failed");
+    Serial.println("✗ WiFi Connection Failed!");
+    Serial.println("  Staying in captive portal mode");
     return false;
 }
 
@@ -139,14 +188,35 @@ bool tryConnectSavedNetworks() {
     
     // Try each network in priority order
     for (int i = 0; i < g_config.network_count; i++) {
-        Serial.printf("Trying network %d/%d: %s (priority %d)\n", 
+        Serial.printf("Trying saved network %d/%d: %s (priority %d)\n", 
                      i + 1, g_config.network_count, 
                      g_config.networks[i].ssid,
                      g_config.networks[i].priority);
         
-        if (connectToWiFi(g_config.networks[i].ssid, 
-                         g_config.networks[i].password, 
-                         15000)) {
+        bool connected = false;
+        
+        if (g_config.networks[i].use_static_ip) {
+            IPAddress ip(g_config.networks[i].static_ip[0], g_config.networks[i].static_ip[1], 
+                        g_config.networks[i].static_ip[2], g_config.networks[i].static_ip[3]);
+            IPAddress gateway(g_config.networks[i].gateway[0], g_config.networks[i].gateway[1], 
+                            g_config.networks[i].gateway[2], g_config.networks[i].gateway[3]);
+            IPAddress subnet(g_config.networks[i].subnet[0], g_config.networks[i].subnet[1], 
+                           g_config.networks[i].subnet[2], g_config.networks[i].subnet[3]);
+            IPAddress dns1(g_config.networks[i].dns1[0], g_config.networks[i].dns1[1], 
+                          g_config.networks[i].dns1[2], g_config.networks[i].dns1[3]);
+            IPAddress dns2(g_config.networks[i].dns2[0], g_config.networks[i].dns2[1], 
+                          g_config.networks[i].dns2[2], g_config.networks[i].dns2[3]);
+            
+            connected = connectToWiFiWithStaticIP(g_config.networks[i].ssid, 
+                                                  g_config.networks[i].password,
+                                                  ip, gateway, subnet, dns1, dns2, 15000);
+        } else {
+            connected = connectToWiFi(g_config.networks[i].ssid, 
+                                     g_config.networks[i].password, 
+                                     15000);
+        }
+        
+        if (connected) {
             return true;
         }
     }

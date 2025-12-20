@@ -60,16 +60,20 @@ void setup() {
         ESP.restart();
     }
     
+    // Initialize GPIO 0 for factory reset button
+    pinMode(0, INPUT_PULLUP);
+    Serial.println("Factory reset: Hold GPIO 0 button for 5 seconds");
+    
     // Initialize LED
     initLED();
     setLED(0); // LED off initially
     
-    // Try to mount SD card
+    // Try to mount SD card (optional - system works without it)
     bool sdMounted = initSDCard();
     if (sdMounted) {
         Serial.println("SD Card mounted successfully");
     } else {
-        Serial.println("SD Card mount failed, will use NVS");
+        Serial.println("SD Card not available - using NVS only (this is normal)");
     }
     
     // Load configuration
@@ -102,15 +106,18 @@ void setup() {
         }
     } else {
         wifi_connected = true;
-        Serial.println("Connected to WiFi");
+        Serial.println("Connected to WiFi successfully!");
         Serial.print("IP Address: ");
         Serial.println(WiFi.localIP());
         
         // Initialize camera only after WiFi connection
+        Serial.println("Initializing camera...");
         if (initCamera()) {
-            Serial.println("Camera initialized successfully");
+            Serial.println("Camera initialized successfully!");
+            camera_initialized = true;
         } else {
-            Serial.println("WARNING: Camera initialization failed");
+            Serial.println("ERROR: Camera initialization failed - check connections");
+            camera_initialized = false;
         }
     }
     
@@ -157,6 +164,29 @@ void setup() {
 }
 
 void loop() {
+    // Check for factory reset button (GPIO 0 held for 5 seconds)
+    static unsigned long button_press_start = 0;
+    static bool button_was_pressed = false;
+    
+    if (digitalRead(0) == LOW) {  // GPIO 0 is pulled low (button pressed)
+        if (!button_was_pressed) {
+            button_press_start = millis();
+            button_was_pressed = true;
+        } else if (millis() - button_press_start > 5000) {
+            Serial.println("========================================");
+            Serial.println("FACTORY RESET - Button held for 5 seconds");
+            Serial.println("  Resetting to factory defaults...");
+            resetConfiguration();
+            Serial.println("  Configuration cleared!");
+            Serial.println("  Restarting in captive portal mode...");
+            Serial.println("========================================");
+            delay(1000);
+            ESP.restart();
+        }
+    } else {
+        button_was_pressed = false;
+    }
+    
     // Handle captive portal DNS if in AP mode
     if (ap_mode_active) {
         handleCaptivePortal();
@@ -172,20 +202,29 @@ void loop() {
             case EVENT_WIFI_CONNECTED:
                 wifi_connected = true;
                 if (ap_mode_active) {
-                    Serial.println("WiFi connected successfully, stopping captive portal...");
+                    Serial.println("========================================");
+                    Serial.println("WiFi Connection Successful!");
+                    Serial.println("  Stopping captive portal...");
                     stopCaptivePortal();
                     ap_mode_active = false;
                     
                     // Initialize camera now that we have WiFi connection
                     if (!camera_initialized) {
+                        Serial.println("  Initializing camera...");
                         if (initCamera()) {
-                            Serial.println("Camera initialized after WiFi connection");
+                            Serial.println("✓ Camera initialized successfully!");
+                            Serial.println("  System is now fully operational");
+                            camera_initialized = true;
                         } else {
-                            Serial.println("WARNING: Camera initialization failed after WiFi connection");
+                            Serial.println("✗ Camera initialization failed!");
+                            Serial.println("  Check camera connections and power supply");
+                            camera_initialized = false;
                         }
                     }
+                    Serial.println("========================================");
+                } else {
+                    Serial.println("WiFi connected event received");
                 }
-                Serial.println("WiFi connected event received");
                 break;
                 
             case EVENT_WIFI_DISCONNECTED:

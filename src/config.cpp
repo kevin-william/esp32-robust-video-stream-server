@@ -114,6 +114,54 @@ parse_config:
                 strncpy(g_config.networks[g_config.network_count].ssid, ssid, 31);
                 strncpy(g_config.networks[g_config.network_count].password, password, 63);
                 g_config.networks[g_config.network_count].priority = priority;
+                
+                // Parse static IP settings (optional)
+                g_config.networks[g_config.network_count].use_static_ip = network["use_static_ip"] | false;
+                if (g_config.networks[g_config.network_count].use_static_ip && network.containsKey("static_ip")) {
+                    JsonArray ip = network["static_ip"];
+                    if (ip.size() == 4) {
+                        for (int i = 0; i < 4; i++) {
+                            g_config.networks[g_config.network_count].static_ip[i] = ip[i];
+                        }
+                    }
+                    
+                    if (network.containsKey("gateway")) {
+                        JsonArray gw = network["gateway"];
+                        if (gw.size() == 4) {
+                            for (int i = 0; i < 4; i++) {
+                                g_config.networks[g_config.network_count].gateway[i] = gw[i];
+                            }
+                        }
+                    }
+                    
+                    if (network.containsKey("subnet")) {
+                        JsonArray sn = network["subnet"];
+                        if (sn.size() == 4) {
+                            for (int i = 0; i < 4; i++) {
+                                g_config.networks[g_config.network_count].subnet[i] = sn[i];
+                            }
+                        }
+                    }
+                    
+                    if (network.containsKey("dns1")) {
+                        JsonArray dns = network["dns1"];
+                        if (dns.size() == 4) {
+                            for (int i = 0; i < 4; i++) {
+                                g_config.networks[g_config.network_count].dns1[i] = dns[i];
+                            }
+                        }
+                    }
+                    
+                    if (network.containsKey("dns2")) {
+                        JsonArray dns = network["dns2"];
+                        if (dns.size() == 4) {
+                            for (int i = 0; i < 4; i++) {
+                                g_config.networks[g_config.network_count].dns2[i] = dns[i];
+                            }
+                        }
+                    }
+                }
+                
                 g_config.network_count++;
             }
         }
@@ -173,6 +221,25 @@ bool saveConfiguration() {
         network["ssid"] = g_config.networks[i].ssid;
         network["password"] = g_config.networks[i].password;
         network["priority"] = g_config.networks[i].priority;
+        
+        // Save static IP settings if configured
+        if (g_config.networks[i].use_static_ip) {
+            network["use_static_ip"] = true;
+            JsonArray ip = network.createNestedArray("static_ip");
+            for (int j = 0; j < 4; j++) ip.add(g_config.networks[i].static_ip[j]);
+            
+            JsonArray gw = network.createNestedArray("gateway");
+            for (int j = 0; j < 4; j++) gw.add(g_config.networks[i].gateway[j]);
+            
+            JsonArray sn = network.createNestedArray("subnet");
+            for (int j = 0; j < 4; j++) sn.add(g_config.networks[i].subnet[j]);
+            
+            JsonArray dns1 = network.createNestedArray("dns1");
+            for (int j = 0; j < 4; j++) dns1.add(g_config.networks[i].dns1[j]);
+            
+            JsonArray dns2 = network.createNestedArray("dns2");
+            for (int j = 0; j < 4; j++) dns2.add(g_config.networks[i].dns2[j]);
+        }
     }
     
     // Build camera settings
