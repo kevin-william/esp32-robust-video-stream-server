@@ -51,7 +51,7 @@ bool validateConfiguration(const JsonDocument& doc) {
     }
     
     // Validate camera settings ranges
-    JsonObject camera = doc["camera"];
+    JsonObjectConst camera = doc["camera"].as<JsonObjectConst>();
     if (camera.containsKey("quality")) {
         int quality = camera["quality"];
         if (quality < 0 || quality > 63) {
@@ -121,7 +121,7 @@ parse_config:
     
     // Parse camera settings
     if (doc.containsKey("camera")) {
-        JsonObject camera = doc["camera"];
+        JsonObjectConst camera = doc["camera"].as<JsonObjectConst>();
         g_config.camera.framesize = camera["framesize"] | DEFAULT_FRAMESIZE;
         g_config.camera.quality = camera["quality"] | DEFAULT_QUALITY;
         g_config.camera.brightness = camera["brightness"] | DEFAULT_BRIGHTNESS;

@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include "esp_camera.h"
 
 // Configuration file paths
 #define CONFIG_FILE_PATH "/config/config.json"

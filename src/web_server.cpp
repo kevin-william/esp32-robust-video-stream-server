@@ -118,8 +118,10 @@ void initWebServer() {
         [](AsyncWebServerRequest *request) {
             // This is called after body is received
         },
-        NULL,
-        handleWiFiConnect
+        nullptr,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            handleWiFiConnect(request, data, len, index, total);
+        }
     );
     
     server.onNotFound(handleNotFound);
@@ -193,7 +195,7 @@ void handleCapture(AsyncWebServerRequest *request) {
         return;
     }
     
-    AsyncWebServerResponse *response = request->beginResponse_P(200, "image/jpeg", fb->buf, fb->len);
+    AsyncWebServerResponse *response = request->beginResponse(200, "image/jpeg", fb->buf, fb->len);
     addCORSHeaders(response);
     response->addHeader("Content-Disposition", "inline; filename=capture.jpg");
     request->send(response);
