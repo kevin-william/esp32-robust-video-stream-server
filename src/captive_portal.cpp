@@ -157,9 +157,14 @@ bool connectToWiFiWithStaticIP(const char* ssid, const char* password,
 
 bool tryConnectSavedNetworks() {
     if (g_config.network_count == 0) {
-        Serial.println("No saved networks to try");
+        Serial.println("No saved WiFi networks found in configuration");
         return false;
     }
+    
+    Serial.println("========================================");
+    Serial.printf("Found %d saved network(s)\n", g_config.network_count);
+    Serial.println("Attempting to connect...");
+    Serial.println("========================================");
     
     // Sort networks by priority (simple bubble sort for small array)
     for (int i = 0; i < g_config.network_count - 1; i++) {
@@ -174,7 +179,7 @@ bool tryConnectSavedNetworks() {
     
     // Try each network in priority order
     for (int i = 0; i < g_config.network_count; i++) {
-        Serial.printf("Trying saved network %d/%d: %s (priority %d)\n", 
+        Serial.printf("Attempt %d/%d - Network: '%s' (priority: %d)\n", 
                      i + 1, g_config.network_count, 
                      g_config.networks[i].ssid,
                      g_config.networks[i].priority);
@@ -182,6 +187,7 @@ bool tryConnectSavedNetworks() {
         bool connected = false;
         
         if (g_config.networks[i].use_static_ip) {
+            Serial.println("  Using static IP configuration");
             IPAddress ip(g_config.networks[i].static_ip[0], g_config.networks[i].static_ip[1], 
                         g_config.networks[i].static_ip[2], g_config.networks[i].static_ip[3]);
             IPAddress gateway(g_config.networks[i].gateway[0], g_config.networks[i].gateway[1], 
@@ -191,15 +197,22 @@ bool tryConnectSavedNetworks() {
                                                   g_config.networks[i].password,
                                                   ip, gateway, 15000);
         } else {
+            Serial.println("  Using DHCP");
             connected = connectToWiFi(g_config.networks[i].ssid, 
                                      g_config.networks[i].password, 
                                      15000);
         }
         
         if (connected) {
+            Serial.println("========================================");
             return true;
+        } else {
+            Serial.printf("  ✗ Failed to connect to '%s'\n", g_config.networks[i].ssid);
         }
     }
     
+    Serial.println("========================================");
+    Serial.println("All connection attempts failed");
+    Serial.println("========================================");
     return false;
 }

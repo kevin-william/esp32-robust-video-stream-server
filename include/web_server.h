@@ -2,39 +2,30 @@
 #define WEB_SERVER_H
 
 #include <Arduino.h>
-#include <ESPAsyncWebServer.h>
+#include <esp_http_server.h>
 
-// Server instance
-extern AsyncWebServer server;
+// Server handle
+extern httpd_handle_t server;
 
 // Initialize web server with all routes
 void initWebServer();
 
+// Stop web server
+void stopWebServer();
+
 // Route handlers
-void handleStatus(AsyncWebServerRequest *request);
-void handleSleepStatus(AsyncWebServerRequest *request);
-void handleCapture(AsyncWebServerRequest *request);
-void handleStream(AsyncWebServerRequest *request);
-void handleBMP(AsyncWebServerRequest *request);
-void handleControl(AsyncWebServerRequest *request);
-void handleSleep(AsyncWebServerRequest *request);
-void handleWake(AsyncWebServerRequest *request);
-void handleRestart(AsyncWebServerRequest *request);
-void handleFactoryReset(AsyncWebServerRequest *request);
-void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
-void handleConfig(AsyncWebServerRequest *request);
-void handleOTA(AsyncWebServerRequest *request);
-void handleNotFound(AsyncWebServerRequest *request);
+esp_err_t handleRoot(httpd_req_t *req);
+esp_err_t handleStatus(httpd_req_t *req);
+esp_err_t handleSleepStatus(httpd_req_t *req);
+esp_err_t handleCapture(httpd_req_t *req);
+esp_err_t handleStream(httpd_req_t *req);
+esp_err_t handleBMP(httpd_req_t *req);
+esp_err_t handleControl(httpd_req_t *req);
+esp_err_t handleSleep(httpd_req_t *req);
+esp_err_t handleWake(httpd_req_t *req);
+esp_err_t handleRestart(httpd_req_t *req);
+esp_err_t handleFactoryReset(httpd_req_t *req);
+esp_err_t handleWiFiConnect(httpd_req_t *req);
+esp_err_t handleDiagnostics(httpd_req_t *req);
 
-// Stream helper functions
-void streamJPEG(AsyncWebServerRequest *request);
-
-// CORS middleware
-void addCORSHeaders(AsyncWebServerResponse *response);
-
-// Authentication
-bool checkAuthentication(AsyncWebServerRequest *request);
-String generateCSRFToken();
-bool validateCSRFToken(const String& token);
-
-#endif // WEB_SERVER_H
+#endif

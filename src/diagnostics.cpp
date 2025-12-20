@@ -5,11 +5,12 @@
 #include <esp_task_wdt.h>
 #include <soc/rtc.h>
 
-DiagnosticCounters g_diag = {0, 0, 0, 0, 0.0, 0, 0, 0};
+DiagnosticCounters g_diag = {0, 0, 0, 0, 0, 0.0, 0, 0, 0};
 
 void initDiagnostics() {
     g_diag.frame_count = 0;
     g_diag.frame_errors = 0;
+    g_diag.total_frames_sent = 0;
     g_diag.last_frame_time = millis();
     g_diag.fps_calculation_start = millis();
     g_diag.current_fps = 0.0;
@@ -83,10 +84,10 @@ String getDiagnosticsJSON() {
     // Camera/Streaming Stats
     JsonObject streaming = doc.createNestedObject("streaming");
     streaming["fps"] = g_diag.current_fps;
-    streaming["total_frames"] = g_diag.frame_count;
+    streaming["total_frames"] = g_diag.total_frames_sent;
     streaming["frame_errors"] = g_diag.frame_errors;
-    streaming["error_rate_pct"] = g_diag.frame_count > 0 ? 
-        100.0 * g_diag.frame_errors / (g_diag.frame_count + g_diag.frame_errors) : 0.0;
+    streaming["error_rate_pct"] = (g_diag.total_frames_sent + g_diag.frame_errors) > 0 ? 
+        100.0 * g_diag.frame_errors / (g_diag.total_frames_sent + g_diag.frame_errors) : 0.0;
     streaming["last_frame_ms_ago"] = millis() - g_diag.last_frame_time;
     streaming["total_bytes_sent"] = g_diag.total_bytes_sent;
     streaming["camera_initialized"] = camera_initialized;
@@ -165,8 +166,12 @@ String getDiagnosticsJSON() {
         warnings.add("Weak WiFi signal (<-80 dBm)");
     }
     
-    if (getTaskStackHighWaterMark(cameraTaskHandle) < 512) {
-        errors.add("Camera task stack critical (<512 bytes)");
+    // Camera task removed - AsyncWebServer handles streaming directly
+    // Stack check removed as task no longer exists
+    
+    unsigned long total_attempts = g_diag.total_frames_sent + g_diag.frame_errors;
+    if (total_attempts > 10 && g_diag.frame_errors > total_attempts * 0.1) {
+        errors.add("High frame error rate (>10%)");
     }
     
     if (g_diag.frame_errors > g_diag.frame_count * 0.1) {

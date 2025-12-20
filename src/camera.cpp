@@ -28,31 +28,63 @@ bool initCamera() {
     config.xclk_freq_hz = 20000000;
     config.pixel_format = PIXFORMAT_JPEG;
     
-    // Init with high specs to pre-allocate larger buffers
+    // Init with balanced specs - performance vs resource usage
     if (psramFound()) {
-        config.frame_size = FRAMESIZE_VGA;  // Start with VGA for better compatibility
-        config.jpeg_quality = 10;
-        config.fb_count = 2;  // Double buffering for smooth streaming
-        config.grab_mode = CAMERA_GRAB_LATEST; // Always get latest frame
-        Serial.println("PSRAM found, using optimized streaming settings");
+        config.frame_size = FRAMESIZE_QVGA;  // 320x240 - optimized for streaming
+        config.jpeg_quality = 18;  // Higher number = lower quality = faster processing
+        config.fb_count = 2;  // 2 buffers to prevent capture failures during streaming
+        config.grab_mode = CAMERA_GRAB_LATEST;  // Always get latest frame
+        Serial.println("PSRAM found, using QVGA (320x240) with 2 frame buffers");
     } else {
-        config.frame_size = FRAMESIZE_HVGA;
-        config.jpeg_quality = 12;
-        config.fb_count = 1;
-        config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-        Serial.println("PSRAM not found, using conservative settings");
+        config.frame_size = FRAMESIZE_QVGA;  // 320x240 - maximum performance
+        config.jpeg_quality = 20;
+        config.fb_count = 2;  // 2 buffers even without PSRAM
+        config.grab_mode = CAMERA_GRAB_LATEST;  // Always get latest frame
+        Serial.println("PSRAM not found, using QVGA (320x240) with 2 frame buffers");
     }
     
     // Camera init
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
-        Serial.printf("Camera init failed with error 0x%x\n", err);
+        Serial.printf("❌ Camera init failed with error 0x%x\n", err);
         return false;
     }
     
+    Serial.println("✓ Camera driver initialized");
+    
     // Apply configuration settings
     sensor_t *s = esp_camera_sensor_get();
+    if (!s) {
+        Serial.println("❌ Failed to get camera sensor");
+        esp_camera_deinit();
+        return false;
+    }
+    
+    Serial.println("✓ Camera sensor acquired");
+    
+    camera_initialized = true;
+    camera_sleeping = false;
+    camera_init_time = millis();
+    
+    // Flush first few frames - they are often corrupted/bad quality
+    Serial.println("Flushing initial frames...");
+    int flushed = 0;
+    for (int i = 0; i < 5; i++) {
+        delay(150); // Give camera time to stabilize
+        camera_fb_t *fb = esp_camera_fb_get();
+        if (fb) {
+            Serial.printf("  ✓ Flushed frame %d: %u bytes (%dx%d)\n", i+1, fb->len, fb->width, fb->height);
+            esp_camera_fb_return(fb);
+            flushed++;
+        } else {
+            Serial.printf("  ⚠ Frame %d: capture failed\n", i+1);
+        }
+    }
+    Serial.printf("Camera warmup complete (%d/%d frames)\n", flushed, 5);
+    
+    // Now apply custom configuration settings
     if (s) {
+        Serial.println("Applying custom camera settings...");
         s->set_framesize(s, (framesize_t)g_config.camera.framesize);
         s->set_quality(s, g_config.camera.quality);
         s->set_brightness(s, g_config.camera.brightness);
@@ -76,11 +108,8 @@ bool initCamera() {
         s->set_wpc(s, g_config.camera.wpc);
         s->set_raw_gma(s, g_config.camera.raw_gma);
         s->set_lenc(s, g_config.camera.lenc);
+        Serial.println("✓ Settings applied");
     }
-    
-    camera_initialized = true;
-    camera_sleeping = false;
-    camera_init_time = millis();
     
     return true;
 }
@@ -102,16 +131,27 @@ bool reinitCamera() {
 
 camera_fb_t* captureFrame() {
     if (!camera_initialized || camera_sleeping) {
+        Serial.println("❌ captureFrame: camera not ready (initialized=" + String(camera_initialized) + 
+                       ", sleeping=" + String(camera_sleeping) + ")");
         return nullptr;
     }
     
-    if (xSemaphoreTake(cameraMutex, portMAX_DELAY) == pdTRUE) {
-        camera_fb_t *fb = esp_camera_fb_get();
-        xSemaphoreGive(cameraMutex);
-        return fb;
+    // Direct capture without mutex (stream also uses direct access)
+    Serial.println("Attempting frame capture...");
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) {
+        Serial.println("❌ captureFrame: esp_camera_fb_get returned NULL");
+        // Try to get sensor status
+        sensor_t *s = esp_camera_sensor_get();
+        if (s) {
+            Serial.printf("   Sensor status - ID: 0x%x\n", s->id.PID);
+        } else {
+            Serial.println("   Sensor not available!");
+        }
+    } else {
+        Serial.printf("✓ Frame captured: %u bytes, %dx%d\n", fb->len, fb->width, fb->height);
     }
-    
-    return nullptr;
+    return fb;
 }
 
 void releaseFrame(camera_fb_t* fb) {
@@ -182,45 +222,30 @@ const char* getResetReason() {
     }
 }
 
-// Camera task - handles frame capture and processing
+// Camera task - REMOVED to save resources
 void cameraTask(void* parameter) {
-    Serial.println("Camera task started on core " + String(xPortGetCoreID()));
-    
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(100); // 10 Hz
-    
-    while (true) {
-        // This task can be used for periodic camera maintenance
-        // or frame preprocessing if needed
-        
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
-    }
+    // Not used - task creation skipped
+    vTaskDelete(NULL);
 }
 
-// Web server task - handles HTTP requests
+// Web server task - REMOVED (AsyncWebServer is truly async)
 void webServerTask(void* parameter) {
-    Serial.println("Web server task started on core " + String(xPortGetCoreID()));
-    
-    while (true) {
-        // Web server runs asynchronously, just keep task alive
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+    // Not used - task creation skipped
+    vTaskDelete(NULL);
 }
 
-// Watchdog task - monitors system health
+// Watchdog task - lightweight monitoring
 void watchdogTask(void* parameter) {
     Serial.println("Watchdog task started on core " + String(xPortGetCoreID()));
     
-    TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(5000); // 5 seconds
-    
     while (true) {
-        // Monitor heap and system health
-        if (ESP.getFreeHeap() < 10000) {
-            Serial.println("WARNING: Low heap memory!");
+        // Minimal monitoring - check every 30 seconds
+        size_t freeHeap = ESP.getFreeHeap();
+        if (freeHeap < 10000) {
+            Serial.printf("⚠ Low heap: %d bytes\n", freeHeap);
         }
         
-        vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        vTaskDelay(pdMS_TO_TICKS(30000));  // 30 seconds
     }
 }
 

@@ -6,8 +6,9 @@
 
 // Diagnostic counters
 struct DiagnosticCounters {
-    unsigned long frame_count;
-    unsigned long frame_errors;
+    unsigned long frame_count;          // Frames in current FPS window
+    unsigned long frame_errors;         // Total errors since boot
+    unsigned long total_frames_sent;    // Total successful frames since boot
     unsigned long last_frame_time;
     unsigned long fps_calculation_start;
     float current_fps;

@@ -97,31 +97,52 @@ void setup() {
     bool connected = tryConnectSavedNetworks();
     
     if (!connected) {
-        Serial.println("Could not connect to any saved network");
-        Serial.println("Starting captive portal for WiFi configuration");
+        Serial.println("========================================");
+        Serial.println("WiFi Connection Failed");
+        Serial.println("  Could not connect to any saved network");
+        Serial.println("  Starting AP mode with captive portal");
+        Serial.println("========================================");
         
         if (startCaptivePortal()) {
             ap_mode_active = true;
-            Serial.println("Captive portal started successfully");
-            Serial.print("Connect to AP: ");
+            Serial.println("✓ Captive portal started successfully");
+            Serial.println();
+            Serial.println("CONFIGURATION REQUIRED:");
+            Serial.print("  1. Connect to WiFi: ");
             Serial.println(DEFAULT_AP_SSID);
-            Serial.println("Navigate to http://192.168.4.1 to configure");
+            Serial.print("     Password: ");
+            Serial.println(DEFAULT_AP_PASSWORD);
+            Serial.println("  2. Navigate to: http://192.168.4.1");
+            Serial.println("  3. Configure your WiFi credentials");
+            Serial.println();
+            Serial.println("Waiting for WiFi configuration...");
+            Serial.println("========================================");
         } else {
-            Serial.println("ERROR: Failed to start captive portal");
+            Serial.println("✗ ERROR: Failed to start captive portal");
+            Serial.println("  System cannot continue without network");
+            Serial.println("  Restarting in 5 seconds...");
+            delay(5000);
+            ESP.restart();
         }
     } else {
         wifi_connected = true;
-        Serial.println("Connected to WiFi successfully!");
-        Serial.print("IP Address: ");
+        Serial.println("========================================");
+        Serial.println("✓ WiFi Connected successfully!");
+        Serial.print("  IP Address: ");
         Serial.println(WiFi.localIP());
+        Serial.print("  Signal Strength: ");
+        Serial.print(WiFi.RSSI());
+        Serial.println(" dBm");
+        Serial.println("========================================");
         
         // Initialize camera only after WiFi connection
         Serial.println("Initializing camera...");
         if (initCamera()) {
-            Serial.println("Camera initialized successfully!");
+            Serial.println("✓ Camera initialized successfully!");
             camera_initialized = true;
         } else {
-            Serial.println("ERROR: Camera initialization failed - check connections");
+            Serial.println("✗ ERROR: Camera initialization failed");
+            Serial.println("  Please check camera connections and power supply");
             camera_initialized = false;
         }
     }
@@ -130,35 +151,17 @@ void setup() {
     initWebServer();
     Serial.println("Web server started");
     
-    // Create FreeRTOS tasks
-    xTaskCreatePinnedToCore(
-        cameraTask,
-        "CameraTask",
-        8192,
-        NULL,
-        CAMERA_TASK_PRIORITY,
-        &cameraTaskHandle,
-        CAMERA_CORE
-    );
-    
-    xTaskCreatePinnedToCore(
-        webServerTask,
-        "WebServerTask",
-        8192,
-        NULL,
-        WEB_TASK_PRIORITY,
-        &webServerTaskHandle,
-        WEB_CORE
-    );
-    
+    // Create minimal FreeRTOS tasks
+    // Camera and web server tasks removed - AsyncWebServer handles HTTP asynchronously
+    // Only keep watchdog with safe stack size
     xTaskCreatePinnedToCore(
         watchdogTask,
         "WatchdogTask",
-        4096,
+        4096,  // Safe stack size
         NULL,
-        WATCHDOG_TASK_PRIORITY,
+        1,  // Low priority
         &watchdogTaskHandle,
-        WEB_CORE
+        1   // Core 1 (APP_CPU)
     );
     
     Serial.println("All tasks created successfully");
@@ -198,12 +201,10 @@ void loop() {
     // Handle captive portal DNS if in AP mode
     if (ap_mode_active) {
         handleCaptivePortal();
-        
         // No timeout - keep captive portal active until WiFi is configured
-        // This ensures the device remains accessible for configuration
     }
     
-    // Process events from queue
+    // Process events from queue - non-blocking check
     Event event;
     if (xQueueReceive(eventQueue, &event, 0) == pdTRUE) {
         switch (event.type) {
@@ -237,14 +238,10 @@ void loop() {
                 
             case EVENT_WIFI_DISCONNECTED:
                 wifi_connected = false;
-                Serial.println("WiFi disconnected event received");
-                Serial.println("Note: Captive portal will NOT restart automatically");
-                Serial.println("Device will attempt to reconnect to known networks");
-                // Do not restart captive portal - maintain current operation mode
+                Serial.println("WiFi disconnected - attempting reconnection");
                 break;
                 
             case EVENT_CONFIG_UPDATED:
-                Serial.println("Configuration updated");
                 saveConfiguration();
                 break;
                 
@@ -259,5 +256,6 @@ void loop() {
         }
     }
     
-    delay(10); // Small delay to prevent watchdog issues
+    // Increased delay to reduce CPU overhead in main loop
+    delay(50);
 }
