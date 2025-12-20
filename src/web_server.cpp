@@ -65,11 +65,9 @@ void initWebServer() {
         html += "<div class='container'><h1>ESP32-CAM Control Panel</h1>";
         
         if (ap_mode_active) {
-            html += "<div class='status'>⚙️ Configuration Mode - Connect your WiFi network below</div>";
+            html += "<div class='status'>Configuration Mode - Connect your WiFi network below</div>";
             html += "<h2>WiFi Setup</h2>";
             html += "<p><strong>Note:</strong> The device will remain in this mode until successfully connected.</p>";
-            html += "<button onclick='scanNetworks()' style='margin:10px 0'>🔍 Scan WiFi Networks</button>";
-            html += "<div id='networks' style='margin:10px 0'></div>";
             html += "<h3>WiFi Configuration</h3>";
             html += "<div style='background:#f8f9fa;padding:15px;border-radius:5px'>";
             html += "<input type='text' id='ssid' placeholder='WiFi SSID *' required>";
@@ -77,23 +75,20 @@ void initWebServer() {
             html += "<p style='margin:10px 0;color:#666'><strong>Optional:</strong> Static IP Configuration (leave blank for DHCP)</p>";
             html += "<input type='text' id='static_ip' placeholder='Static IP (e.g., 192.168.1.100)'>";
             html += "<input type='text' id='gateway' placeholder='Gateway (e.g., 192.168.1.1)'>";
-            html += "<input type='text' id='subnet' placeholder='Subnet (e.g., 255.255.255.0)'>";
-            html += "<input type='text' id='dns1' placeholder='DNS 1 (e.g., 8.8.8.8)'>";
-            html += "<input type='text' id='dns2' placeholder='DNS 2 (e.g., 8.8.4.4)'>";
-            html += "<button onclick='connectWiFi()' style='margin-top:10px;width:100%;padding:12px;font-size:16px'>✓ Connect to WiFi</button>";
+            html += "<button onclick='connectWiFi()' style='margin-top:10px;width:100%;padding:12px;font-size:16px'>Connect to WiFi</button>";
             html += "<div id='status-message' style='margin-top:10px'></div>";
             html += "</div>";
         } else {
             html += "<div class='status'>Connected - IP: " + WiFi.localIP().toString() + "</div>";
             html += "<h2>Camera Controls</h2>";
-            html += "<button onclick='capture()'>📸 Capture Photo</button>";
-            html += "<button onclick='location.href=\"/stream\"'>🎥 View Stream</button>";
-            html += "<button onclick='sleep()'>💤 Sleep Camera</button>";
-            html += "<button onclick='wake()'>👁 Wake Camera</button>";
+            html += "<button onclick='capture()'>Capture Photo</button>";
+            html += "<button onclick='location.href=\"/stream\"'>View Stream</button>";
+            html += "<button onclick='sleep()'>Sleep Camera</button>";
+            html += "<button onclick='wake()'>Wake Camera</button>";
             html += "<div id='image'></div>";
             html += "<h2>System</h2>";
-            html += "<button onclick='restart()' style='background:#ff9800'>🔄 Restart Device</button>";
-            html += "<button onclick='factoryReset()' style='background:#f44336'>⚠️ Factory Reset</button>";
+            html += "<button onclick='restart()' style='background:#ff9800'>Restart Device</button>";
+            html += "<button onclick='factoryReset()' style='background:#f44336'>Factory Reset</button>";
             html += "<p style='color:#666;font-size:12px'>Factory Reset will erase all WiFi networks and return to setup mode</p>";
             html += "<h2>Settings</h2>";
             html += "<label>Quality (0-63): <input type='range' id='quality' min='0' max='63' value='" + String(g_config.camera.quality) + "' onchange='setControl(\"quality\",this.value)'></label>";
@@ -102,15 +97,13 @@ void initWebServer() {
         }
         
         html += "</div><script>";
-        html += "function scanNetworks(){document.getElementById('status-message').innerHTML='<p style=\"color:#007bff\">⏳ Scanning networks...</p>';fetch('/wifi-scan').then(r=>r.json()).then(d=>{let h='<ul style=\"list-style:none;padding:0\">';d.forEach(n=>{h+='<li style=\"padding:5px;border-bottom:1px solid #eee\"><strong>'+n.ssid+'</strong> ('+n.rssi+'dBm) <button onclick=\"useNetwork(\\\''+n.ssid+'\\\')\" style=\"padding:5px 10px\">Use</button></li>'});h+='</ul>';document.getElementById('networks').innerHTML=h;document.getElementById('status-message').innerHTML='';}).catch(e=>{document.getElementById('status-message').innerHTML='<p style=\"color:red\">✗ Scan failed</p>'})}";
-        html += "function useNetwork(s){document.getElementById('ssid').value=s;}";
-        html += "function connectWiFi(){const s=document.getElementById('ssid').value;const p=document.getElementById('password').value;if(!s||!p){alert('SSID and Password are required!');return;}const msg=document.getElementById('status-message');msg.innerHTML='<p style=\"color:#007bff\">⏳ Connecting to WiFi...</p>';const data={ssid:s,password:p};const sip=document.getElementById('static_ip').value;if(sip){const gw=document.getElementById('gateway').value;const sn=document.getElementById('subnet').value;const d1=document.getElementById('dns1').value;const d2=document.getElementById('dns2').value;if(gw&&sn){data.use_static_ip=true;data.static_ip=sip;data.gateway=gw;data.subnet=sn;data.dns1=d1||'8.8.8.8';data.dns2=d2||'8.8.4.4';}}fetch('/wifi-connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()).then(d=>{if(d.success){msg.innerHTML='<p style=\"color:green;font-size:18px\">✓ Connected successfully!</p><p>IP: '+d.ip+'</p><p>Camera is initializing...</p><p>Redirecting in 5 seconds...</p>';setTimeout(()=>{window.location.href='http://'+d.ip},5000);}else{msg.innerHTML='<p style=\"color:red;font-size:16px\">✗ Connection failed!</p><p>'+d.message+'</p><p>Please check your credentials and try again.</p>';}}).catch(e=>{msg.innerHTML='<p style=\"color:red\">✗ Request failed: '+e.message+'</p>'})}";
+        html += "function connectWiFi(){const s=document.getElementById('ssid').value;const p=document.getElementById('password').value;if(!s||!p){alert('SSID and Password are required!');return;}const msg=document.getElementById('status-message');msg.innerHTML='<p style=\"color:#007bff\">Connecting to WiFi...</p>';const data={ssid:s,password:p};const sip=document.getElementById('static_ip').value;if(sip){const gw=document.getElementById('gateway').value;if(gw){data.use_static_ip=true;data.static_ip=sip;data.gateway=gw;}}fetch('/wifi-connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()).then(d=>{msg.innerHTML='<p style=\"color:'+(d.success?'green':'red')+';font-size:16px\">'+d.message+'</p>';}).catch(e=>{msg.innerHTML='<p style=\"color:red\">Request failed. Check credentials and try again.</p>'})}";
         html += "function capture(){fetch('/capture').then(r=>r.blob()).then(b=>{const url=URL.createObjectURL(b);document.getElementById('image').innerHTML='<img src=\"'+url+'\">';});}";
         html += "function setControl(v,val){fetch('/control?var='+v+'&val='+val).then(r=>r.json()).then(d=>console.log(d));}";
         html += "function sleep(){fetch('/sleep').then(r=>r.json()).then(d=>alert(d.message));}";
         html += "function wake(){fetch('/wake').then(r=>r.json()).then(d=>alert(d.message));}";
         html += "function restart(){if(confirm('Restart device?')){fetch('/restart').then(r=>r.json()).then(d=>{alert('Device restarting... Please wait 30 seconds.');setTimeout(()=>location.reload(),30000);});}}";
-        html += "function factoryReset(){if(confirm('⚠️ WARNING: This will erase ALL WiFi configurations and return to setup mode.\\n\\nAre you sure?')){if(confirm('This action cannot be undone. Continue?')){fetch('/factory-reset').then(r=>r.json()).then(d=>{alert(d.message);setTimeout(()=>location.href='http://192.168.4.1',5000);}).catch(e=>alert('Reset initiated'));}}}";
+        html += "function factoryReset(){if(confirm('WARNING: This will erase ALL WiFi configurations and return to setup mode.\\n\\nAre you sure?')){if(confirm('This action cannot be undone. Continue?')){fetch('/factory-reset').then(r=>r.json()).then(d=>{alert(d.message);setTimeout(()=>location.href='http://192.168.4.1',5000);}).catch(e=>alert('Reset initiated'));}}}";
         html += "</script></body></html>";
         
         request->send(200, "text/html", html);
@@ -127,7 +120,6 @@ void initWebServer() {
     server.on("/wake", HTTP_GET, handleWake);
     server.on("/restart", HTTP_GET, handleRestart);
     server.on("/factory-reset", HTTP_GET, handleFactoryReset);
-    server.on("/wifi-scan", HTTP_GET, handleWiFiScan);
     
     // POST endpoint with body handler
     server.on("/wifi-connect", HTTP_POST, 
@@ -368,13 +360,6 @@ void handleFactoryReset(AsyncWebServerRequest *request) {
     xQueueSend(eventQueue, &event, 0);
 }
 
-void handleWiFiScan(AsyncWebServerRequest *request) {
-    String networks = scanWiFiNetworks();
-    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", networks);
-    addCORSHeaders(response);
-    request->send(response);
-}
-
 void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     static String body;
     
@@ -416,20 +401,15 @@ void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len
         Serial.printf("  Static IP: %s\n", use_static_ip ? "Yes" : "No (DHCP)");
         
         if (use_static_ip && doc.containsKey("static_ip")) {
-            IPAddress ip, gateway, subnet, dns1, dns2;
+            IPAddress ip, gateway;
             
             if (ip.fromString(doc["static_ip"].as<String>()) &&
-                gateway.fromString(doc["gateway"].as<String>()) &&
-                subnet.fromString(doc["subnet"].as<String>())) {
-                
-                dns1.fromString(doc.containsKey("dns1") ? doc["dns1"].as<String>() : "8.8.8.8");
-                dns2.fromString(doc.containsKey("dns2") ? doc["dns2"].as<String>() : "8.8.4.4");
+                gateway.fromString(doc["gateway"].as<String>())) {
                 
                 Serial.printf("  IP: %s\n", ip.toString().c_str());
                 Serial.printf("  Gateway: %s\n", gateway.toString().c_str());
-                Serial.printf("  Subnet: %s\n", subnet.toString().c_str());
                 
-                connected = connectToWiFiWithStaticIP(ssid, password, ip, gateway, subnet, dns1, dns2, 20000);
+                connected = connectToWiFiWithStaticIP(ssid, password, ip, gateway, 20000);
             } else {
                 AsyncWebServerResponse *response = request->beginResponse(400, "application/json", "{\"success\":false,\"message\":\"Invalid IP address format\"}");
                 addCORSHeaders(response);
@@ -452,19 +432,13 @@ void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len
                 net.use_static_ip = use_static_ip;
                 
                 if (use_static_ip) {
-                    IPAddress ip, gateway, subnet, dns1, dns2;
+                    IPAddress ip, gateway;
                     ip.fromString(doc["static_ip"].as<String>());
                     gateway.fromString(doc["gateway"].as<String>());
-                    subnet.fromString(doc["subnet"].as<String>());
-                    dns1.fromString(doc.containsKey("dns1") ? doc["dns1"].as<String>() : "8.8.8.8");
-                    dns2.fromString(doc.containsKey("dns2") ? doc["dns2"].as<String>() : "8.8.4.4");
                     
                     for (int i = 0; i < 4; i++) {
                         net.static_ip[i] = ip[i];
                         net.gateway[i] = gateway[i];
-                        net.subnet[i] = subnet[i];
-                        net.dns1[i] = dns1[i];
-                        net.dns2[i] = dns2[i];
                     }
                 }
                 

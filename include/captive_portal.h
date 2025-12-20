@@ -18,13 +18,11 @@ void handleCaptivePortal();
 bool startAPMode(const char* ssid = nullptr, const char* password = nullptr);
 void stopAPMode();
 
-// WiFi scanning and connection
-String scanWiFiNetworks();
+// WiFi connection
 bool connectToWiFi(const char* ssid, const char* password, int timeout_ms = 20000);
 bool connectToWiFiWithStaticIP(const char* ssid, const char* password, 
                                 IPAddress ip, IPAddress gateway, 
-                                IPAddress subnet, IPAddress dns1, 
-                                IPAddress dns2, int timeout_ms = 20000);
+                                int timeout_ms = 20000);
 bool tryConnectSavedNetworks();
 
 #endif // CAPTIVE_PORTAL_H

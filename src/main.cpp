@@ -61,8 +61,8 @@ void setup() {
     }
     
     // Initialize GPIO 0 for factory reset button
-    pinMode(0, INPUT_PULLUP);
-    Serial.println("Factory reset: Hold GPIO 0 button for 5 seconds");
+    // pinMode(0, INPUT_PULLUP);  // DISABLED - GPIO 0 detection issues
+    // Serial.println("Factory reset: Hold GPIO 0 button for 5 seconds");
     
     // Initialize LED
     initLED();
@@ -165,6 +165,8 @@ void setup() {
 
 void loop() {
     // Check for factory reset button (GPIO 0 held for 5 seconds)
+    // DISABLED - GPIO 0 detection issues causing false triggers
+    /*
     static unsigned long button_press_start = 0;
     static bool button_was_pressed = false;
     
@@ -186,6 +188,7 @@ void loop() {
     } else {
         button_was_pressed = false;
     }
+    */
     
     // Handle captive portal DNS if in AP mode
     if (ap_mode_active) {

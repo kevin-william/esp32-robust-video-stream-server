@@ -45,9 +45,6 @@ struct WiFiNetwork {
     bool use_static_ip;
     uint8_t static_ip[4];
     uint8_t gateway[4];
-    uint8_t subnet[4];
-    uint8_t dns1[4];
-    uint8_t dns2[4];
 };
 
 // Camera settings structure

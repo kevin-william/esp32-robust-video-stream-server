@@ -69,24 +69,6 @@ void handleCaptivePortal() {
     }
 }
 
-String scanWiFiNetworks() {
-    String json = "[";
-    int n = WiFi.scanNetworks();
-    
-    for (int i = 0; i < n; i++) {
-        if (i > 0) json += ",";
-        json += "{";
-        json += "\"ssid\":\"" + WiFi.SSID(i) + "\",";
-        json += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
-        json += "\"encryption\":" + String(WiFi.encryptionType(i));
-        json += "}";
-    }
-    
-    json += "]";
-    WiFi.scanDelete();
-    return json;
-}
-
 bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
     Serial.printf("Attempting to connect to WiFi: %s\n", ssid);
     
@@ -126,15 +108,19 @@ bool connectToWiFi(const char* ssid, const char* password, int timeout_ms) {
 
 bool connectToWiFiWithStaticIP(const char* ssid, const char* password, 
                                  IPAddress ip, IPAddress gateway, 
-                                 IPAddress subnet, IPAddress dns1, 
-                                 IPAddress dns2, int timeout_ms) {
+                                 int timeout_ms) {
     Serial.printf("Attempting to connect to WiFi with static IP: %s\n", ssid);
     Serial.printf("  Static IP: %s\n", ip.toString().c_str());
     Serial.printf("  Gateway: %s\n", gateway.toString().c_str());
     
+    // Use default subnet mask (255.255.255.0) and Google DNS
+    IPAddress subnet(255, 255, 255, 0);
+    IPAddress dns1(8, 8, 8, 8);
+    IPAddress dns2(8, 8, 4, 4);
+    
     // Configure static IP
     if (!WiFi.config(ip, gateway, subnet, dns1, dns2)) {
-        Serial.println("✗ Failed to configure static IP");
+        Serial.println("Failed to configure static IP");
         return false;
     }
     
@@ -200,16 +186,10 @@ bool tryConnectSavedNetworks() {
                         g_config.networks[i].static_ip[2], g_config.networks[i].static_ip[3]);
             IPAddress gateway(g_config.networks[i].gateway[0], g_config.networks[i].gateway[1], 
                             g_config.networks[i].gateway[2], g_config.networks[i].gateway[3]);
-            IPAddress subnet(g_config.networks[i].subnet[0], g_config.networks[i].subnet[1], 
-                           g_config.networks[i].subnet[2], g_config.networks[i].subnet[3]);
-            IPAddress dns1(g_config.networks[i].dns1[0], g_config.networks[i].dns1[1], 
-                          g_config.networks[i].dns1[2], g_config.networks[i].dns1[3]);
-            IPAddress dns2(g_config.networks[i].dns2[0], g_config.networks[i].dns2[1], 
-                          g_config.networks[i].dns2[2], g_config.networks[i].dns2[3]);
             
             connected = connectToWiFiWithStaticIP(g_config.networks[i].ssid, 
                                                   g_config.networks[i].password,
-                                                  ip, gateway, subnet, dns1, dns2, 15000);
+                                                  ip, gateway, 15000);
         } else {
             connected = connectToWiFi(g_config.networks[i].ssid, 
                                      g_config.networks[i].password, 
