@@ -1,11 +1,36 @@
 #include "app.h"
 #include "config.h"
 #include "camera_pins.h"
+#include "diagnostics.h"
 #include <esp_camera.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
 
 bool initCamera() {
+    g_camera_diag.init_attempts++;
+    g_camera_diag.last_init_attempt = millis();
+    Serial.println("\n========================================");
+    Serial.println("Camera Initialization");
+    Serial.println("========================================");
+    
+    #ifdef CAMERA_MODEL_WROVER_KIT
+        Serial.println("Camera Model: WROVER_KIT");
+    #elif defined(CAMERA_MODEL_AI_THINKER)
+        Serial.println("Camera Model: AI_THINKER");
+    #else
+        Serial.println("Camera Model: UNKNOWN");
+    #endif
+    
+    Serial.println("\nPin Configuration:");
+    Serial.printf("  PWDN:  GPIO %d\n", PWDN_GPIO_NUM);
+    Serial.printf("  RESET: GPIO %d\n", RESET_GPIO_NUM);
+    Serial.printf("  XCLK:  GPIO %d\n", XCLK_GPIO_NUM);
+    Serial.printf("  SIOD:  GPIO %d\n", SIOD_GPIO_NUM);
+    Serial.printf("  SIOC:  GPIO %d\n", SIOC_GPIO_NUM);
+    Serial.printf("  Y9:    GPIO %d\n", Y9_GPIO_NUM);
+    Serial.printf("  PCLK:  GPIO %d\n", PCLK_GPIO_NUM);
+    Serial.println("========================================\n");
+    
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -30,11 +55,19 @@ bool initCamera() {
     
     // Init with balanced specs - performance vs resource usage
     if (psramFound()) {
-        config.frame_size = FRAMESIZE_QVGA;  // 320x240 - optimized for streaming
-        config.jpeg_quality = 18;  // Higher number = lower quality = faster processing
-        config.fb_count = 2;  // 2 buffers to prevent capture failures during streaming
+        #ifdef CAMERA_MODEL_WROVER_KIT
+            // WROVER has 8MB PSRAM - can handle higher resolution
+            config.frame_size = FRAMESIZE_SVGA;  // 800x600 - better quality for WROVER
+            config.jpeg_quality = 12;  // Better quality with more PSRAM
+            config.fb_count = 2;
+        #else
+            // AI-Thinker has 4MB PSRAM
+            config.frame_size = FRAMESIZE_QVGA;  // 320x240 - optimized for streaming
+            config.jpeg_quality = 18;  // Higher number = lower quality = faster processing
+            config.fb_count = 2;
+        #endif
         config.grab_mode = CAMERA_GRAB_LATEST;  // Always get latest frame
-        Serial.println("PSRAM found, using QVGA (320x240) with 2 frame buffers");
+        Serial.printf("PSRAM found, using resolution with %d frame buffers\n", config.fb_count);
     } else {
         config.frame_size = FRAMESIZE_QVGA;  // 320x240 - maximum performance
         config.jpeg_quality = 20;
@@ -44,9 +77,50 @@ bool initCamera() {
     }
     
     // Camera init
+    Serial.println("Calling esp_camera_init()...");
+    Serial.flush();
+    
     esp_err_t err = esp_camera_init(&config);
+    
+    Serial.printf("esp_camera_init() returned: 0x%x\n", err);
+    Serial.flush();
+    
     if (err != ESP_OK) {
         Serial.printf("❌ Camera init failed with error 0x%x\n", err);
+        
+        // Record diagnostic info
+        g_camera_diag.init_failures++;
+        g_camera_diag.last_init_success = false;
+        g_camera_diag.last_error_code = err;
+        g_camera_diag.sensor_detected = false;
+        
+        // Print and store detailed error
+        if (err == 0x105) {
+            g_camera_diag.last_error_msg = "ESP_ERR_NOT_FOUND - Camera sensor not detected. Check: camera connection, pin config, power supply";
+            Serial.println("  Error: ESP_ERR_NOT_FOUND - Camera sensor not detected");
+            Serial.println("  Possible causes:");
+            Serial.println("    - Camera not connected properly");
+            Serial.println("    - Wrong pin configuration");
+            Serial.println("    - Camera power issue");
+        } else if (err == 0x20001 || err == 0x107) {
+            g_camera_diag.last_error_msg = "I2C communication failed. Check: SIOD/SIOC pins (GPIO" + String(SIOD_GPIO_NUM) + "/" + String(SIOC_GPIO_NUM) + "), camera power";
+            Serial.println("  Error: I2C communication failed");
+            Serial.println("  Possible causes:");
+            Serial.println("    - Wrong SIOD/SIOC pins");
+            Serial.println("    - Camera not powered");
+        } else if (err == 0x103) {
+            g_camera_diag.last_error_msg = "ESP_ERR_INVALID_ARG - Pin configuration issue";
+            Serial.println("  Error: ESP_ERR_INVALID_ARG");
+            Serial.println("  Pin configuration issue");
+        } else if (err == 0x101) {
+            g_camera_diag.last_error_msg = "ESP_ERR_NO_MEM - Out of memory. PSRAM: " + String(psramFound() ? "Found" : "NOT FOUND");
+            Serial.println("  Error: ESP_ERR_NO_MEM - Out of memory");
+            Serial.printf("  Free heap: %d, PSRAM: %s\n", ESP.getFreeHeap(), psramFound() ? "Found" : "NOT FOUND");
+        } else {
+            g_camera_diag.last_error_msg = "Unknown error 0x" + String(err, HEX);
+            Serial.printf("  Unknown error code: 0x%x\n", err);
+        }
+        
         return false;
     }
     
@@ -56,11 +130,21 @@ bool initCamera() {
     sensor_t *s = esp_camera_sensor_get();
     if (!s) {
         Serial.println("❌ Failed to get camera sensor");
+        g_camera_diag.init_failures++;
+        g_camera_diag.last_init_success = false;
+        g_camera_diag.last_error_code = ESP_FAIL;
+        g_camera_diag.last_error_msg = "Failed to get camera sensor after init";
+        g_camera_diag.sensor_detected = false;
         esp_camera_deinit();
         return false;
     }
     
     Serial.println("✓ Camera sensor acquired");
+    
+    // Record sensor info
+    g_camera_diag.sensor_detected = true;
+    g_camera_diag.sensor_id = "PID:0x" + String(s->id.PID, HEX) + " VER:0x" + String(s->id.VER, HEX) + " MIDL:0x" + String(s->id.MIDL, HEX);
+    Serial.printf("  Sensor ID: %s\n", g_camera_diag.sensor_id.c_str());
     
     camera_initialized = true;
     camera_sleeping = false;
@@ -81,6 +165,9 @@ bool initCamera() {
         }
     }
     Serial.printf("Camera warmup complete (%d/%d frames)\n", flushed, 5);
+    
+    // Record flush stats
+    g_camera_diag.frames_flushed = flushed;
     
     // Now apply custom configuration settings
     if (s) {
@@ -110,6 +197,12 @@ bool initCamera() {
         s->set_lenc(s, g_config.camera.lenc);
         Serial.println("✓ Settings applied");
     }
+    
+    // Mark successful initialization
+    g_camera_diag.last_init_success = true;
+    g_camera_diag.last_init_success_time = millis();
+    g_camera_diag.last_error_code = ESP_OK;
+    g_camera_diag.last_error_msg = "";
     
     return true;
 }

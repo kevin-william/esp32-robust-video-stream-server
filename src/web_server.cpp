@@ -324,8 +324,8 @@ esp_err_t handleWake(httpd_req_t *req) {
         httpd_resp_send(req, "{\"success\":true,\"message\":\"Camera awake\"}", -1);
         return ESP_OK;
     } else {
-        httpd_resp_send(req, "{\"error\":\"Failed to wake camera\"}", -1);
-        return ESP_FAIL;
+        httpd_resp_send(req, "{\"success\":false,\"message\":\"Failed to wake camera\"}", -1);
+        return ESP_OK;  // Return ESP_OK to send the response, not ESP_FAIL
     }
 }
 
@@ -333,9 +333,16 @@ esp_err_t handleRestart(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, "{\"success\":true,\"message\":\"Restarting...\"}", -1);
     
+    // Give time for response to be sent before restarting
+    delay(100);
+    
     Event event;
     event.type = EVENT_RESTART_REQUESTED;
-    xQueueSend(eventQueue, &event, 0);
+    // Use portMAX_DELAY to ensure event is sent
+    if (xQueueSend(eventQueue, &event, portMAX_DELAY) != pdTRUE) {
+        Serial.println("Failed to queue restart event, restarting directly");
+        ESP.restart();  // Fallback: restart directly if queue fails
+    }
     return ESP_OK;
 }
 

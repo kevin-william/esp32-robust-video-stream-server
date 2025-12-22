@@ -1,34 +1,38 @@
 # ESP32-CAM Robust Video Stream Server
 
-A complete, production-ready ESP32-CAM project featuring multi-core task management, configuration persistence, captive portal WiFi setup, REST API, MJPEG streaming, and OTA updates.
+A complete, production-ready ESP32-CAM project featuring native ESP-IDF HTTP server for real MJPEG streaming, configuration persistence, captive portal WiFi setup, REST API, and power management.
 
-## Features
+## ✨ Features
 
-- **Multi-Core FreeRTOS Architecture**: Separate tasks for camera (Core 1) and web server (Core 0) for optimal performance
+- **Native ESP-IDF HTTP Server**: True MJPEG multipart streaming (15-30 FPS)
 - **Captive Portal**: Automatic WiFi configuration portal when no saved networks are available
-- **Configuration Persistence**: Save/load settings from SD card with NVS fallback
+- **Configuration Persistence**: Save/load settings from Flash (NVS) with SD card backup
 - **REST API**: Comprehensive JSON API with CORS support for camera control
-- **MJPEG Streaming**: Real-time video streaming at configurable frame rates
-- **OTA Updates**: Over-the-air firmware updates
+- **Real MJPEG Streaming**: True multipart/x-mixed-replace streaming (not polling)
 - **Sleep/Wake**: Power management with camera sleep/wake functionality
-- **LED Control**: Flash LED control with adjustable intensity
+- **LED Control**: Flash LED control with adjustable intensity (AI-Thinker only)
 - **Memory Optimized**: Designed for ESP32 constraints with PSRAM support
+- **Home Assistant Ready**: Compatible with generic camera platform
 
-## Hardware Requirements
+## 🔧 Hardware Requirements
 
 ### Supported Boards
-- ESP32-CAM (AI-Thinker) - **Primary target**
-- ESP32-WROVER-KIT
-- ESP-EYE
-- Other ESP32 boards with camera support
+
+| Board | Status | Resolution | FPS | Notes |
+|-------|--------|------------|-----|-------|
+| **ESP32-CAM (AI-Thinker)** | ✅ Fully Supported | QVGA (320x240) | 20-25 | 4MB PSRAM, LED Flash |
+| **ESP32-WROVER-KIT** | ✅ Fully Supported | SVGA (800x600) | 15-20 | 8MB PSRAM, No LED |
+| ESP-EYE | ⚠️ Untested | - | - | Should work with pin config |
+| Other ESP32 + Camera | ⚠️ Untested | - | - | Requires pin configuration |
 
 ### Recommended Specs
-- ESP32 with PSRAM (for higher resolutions)
-- MicroSD card (optional, for configuration persistence)
-- Flash LED (built-in on ESP32-CAM)
+- ESP32 with PSRAM (required for resolutions > CIF)
+- MicroSD card (optional, for configuration backup)
+- Flash LED (built-in on ESP32-CAM AI-Thinker)
 
-### Pin Configuration (ESP32-CAM AI-Thinker)
+### Pin Configuration
 
+#### ESP32-CAM (AI-Thinker)
 **Camera Pins:**
 - PWDN: GPIO 32
 - RESET: -1 (not used)

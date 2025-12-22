@@ -406,7 +406,11 @@
             try {
                 const response = await fetch(`${ESP32_IP}/wake`);
                 const data = await response.json();
-                alert(data.message);
+                if (data.success) {
+                    alert(data.message || 'Camera awake');
+                } else {
+                    alert('Failed to wake camera: ' + (data.message || 'Unknown error'));
+                }
                 updateStatus();
             } catch (error) {
                 alert('Failed to wake camera: ' + error.message);

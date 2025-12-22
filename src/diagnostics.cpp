@@ -1,11 +1,13 @@
 #include "diagnostics.h"
 #include "app.h"
+#include "camera_pins.h"
 #include <WiFi.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <soc/rtc.h>
 
 DiagnosticCounters g_diag = {0, 0, 0, 0, 0, 0.0, 0, 0, 0};
+CameraDiagnostics g_camera_diag = {false, 0, 0, ESP_OK, "", 0, 0, false, "Unknown", 0};
 
 void initDiagnostics() {
     g_diag.frame_count = 0;
@@ -93,6 +95,46 @@ String getDiagnosticsJSON() {
     streaming["camera_initialized"] = camera_initialized;
     streaming["camera_sleeping"] = camera_sleeping;
     
+    // Camera Initialization Diagnostics
+    JsonObject camera_diag = doc.createNestedObject("camera_diagnostics");
+    camera_diag["init_attempts"] = g_camera_diag.init_attempts;
+    camera_diag["init_failures"] = g_camera_diag.init_failures;
+    camera_diag["last_init_success"] = g_camera_diag.last_init_success;
+    camera_diag["sensor_detected"] = g_camera_diag.sensor_detected;
+    camera_diag["sensor_id"] = g_camera_diag.sensor_id;
+    camera_diag["frames_flushed"] = g_camera_diag.frames_flushed;
+    
+    if (g_camera_diag.last_init_attempt > 0) {
+        camera_diag["last_attempt_ms_ago"] = millis() - g_camera_diag.last_init_attempt;
+    }
+    
+    if (g_camera_diag.last_init_success_time > 0) {
+        camera_diag["last_success_ms_ago"] = millis() - g_camera_diag.last_init_success_time;
+        camera_diag["uptime_since_init"] = (millis() - g_camera_diag.last_init_success_time) / 1000;
+    }
+    
+    if (!g_camera_diag.last_init_success && g_camera_diag.last_error_code != ESP_OK) {
+        camera_diag["last_error_code"] = String("0x") + String(g_camera_diag.last_error_code, HEX);
+        camera_diag["last_error_message"] = g_camera_diag.last_error_msg;
+    }
+    
+    // GPIO Pin Configuration (for debugging camera connection issues)
+    JsonObject gpio_pins = doc.createNestedObject("camera_pins");
+    #ifdef CAMERA_MODEL_AI_THINKER
+        gpio_pins["model"] = "AI_THINKER";
+    #elif defined(CAMERA_MODEL_WROVER_KIT)
+        gpio_pins["model"] = "WROVER_KIT";
+    #else
+        gpio_pins["model"] = "UNKNOWN";
+    #endif
+    
+    // Only include critical pins for I2C and power
+    JsonObject critical_pins = gpio_pins.createNestedObject("critical");
+    critical_pins["PWDN"] = PWDN_GPIO_NUM;
+    critical_pins["SIOD"] = SIOD_GPIO_NUM;
+    critical_pins["SIOC"] = SIOC_GPIO_NUM;
+    critical_pins["XCLK"] = XCLK_GPIO_NUM;
+    
     // WiFi Stats
     JsonObject wifi = doc.createNestedObject("wifi");
     wifi["connected"] = WiFi.status() == WL_CONNECTED;
@@ -164,6 +206,29 @@ String getDiagnosticsJSON() {
     
     if (WiFi.status() == WL_CONNECTED && WiFi.RSSI() < -80) {
         warnings.add("Weak WiFi signal (<-80 dBm)");
+    }
+    
+    // Camera-specific warnings and errors
+    if (!camera_initialized && !camera_sleeping) {
+        errors.add("Camera not initialized");
+        if (g_camera_diag.last_error_msg.length() > 0) {
+            errors.add("Last error: " + g_camera_diag.last_error_msg);
+        }
+    }
+    
+    if (g_camera_diag.init_failures > 0 && g_camera_diag.init_attempts > 0) {
+        float failure_rate = 100.0 * g_camera_diag.init_failures / g_camera_diag.init_attempts;
+        if (failure_rate > 50) {
+            warnings.add("High camera init failure rate: " + String((int)failure_rate) + "%");
+        }
+    }
+    
+    if (camera_initialized && g_camera_diag.frames_flushed < 3) {
+        warnings.add("Camera warmup incomplete (only " + String(g_camera_diag.frames_flushed) + "/5 frames flushed)");
+    }
+    
+    if (!psramFound()) {
+        warnings.add("PSRAM not detected - limited camera performance");
     }
     
     // Camera task removed - AsyncWebServer handles streaming directly

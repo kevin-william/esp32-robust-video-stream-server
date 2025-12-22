@@ -44,10 +44,14 @@ bool g_config_loaded = false;
 
 void setup() {
     Serial.begin(115200);
+    delay(500);  // Give serial time to initialize
+    Serial.println("\n\n>>> BOOT: Starting setup()");
+    Serial.flush();
     Serial.setDebugOutput(true);
     Serial.println();
     Serial.println("ESP32-CAM Robust Video Stream Server");
     Serial.println("====================================");
+    Serial.flush();
     
     system_start_time = millis();
     
@@ -136,7 +140,10 @@ void setup() {
         Serial.println("========================================");
         
         // Initialize camera only after WiFi connection
-        Serial.println("Initializing camera...");
+        Serial.println("\n>>> DEBUG: Reached camera init block");
+        Serial.println(">>> STEP: About to initialize camera...");
+        Serial.flush();  // Force output
+        
         if (initCamera()) {
             Serial.println("✓ Camera initialized successfully!");
             camera_initialized = true;
@@ -145,6 +152,9 @@ void setup() {
             Serial.println("  Please check camera connections and power supply");
             camera_initialized = false;
         }
+        
+        Serial.println(">>> STEP: Camera initialization completed");
+        Serial.flush();
     }
     
     // Initialize web server (always needed for captive portal or normal operation)

@@ -4,6 +4,20 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+// Camera diagnostic info
+struct CameraDiagnostics {
+    bool last_init_success;
+    unsigned long last_init_attempt;
+    unsigned long last_init_success_time;
+    esp_err_t last_error_code;
+    String last_error_msg;
+    int init_attempts;
+    int init_failures;
+    bool sensor_detected;
+    String sensor_id;
+    int frames_flushed;
+};
+
 // Diagnostic counters
 struct DiagnosticCounters {
     unsigned long frame_count;          // Frames in current FPS window
@@ -18,6 +32,7 @@ struct DiagnosticCounters {
 };
 
 extern DiagnosticCounters g_diag;
+extern CameraDiagnostics g_camera_diag;
 
 // Diagnostic functions
 void initDiagnostics();
