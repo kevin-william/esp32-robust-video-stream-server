@@ -3,6 +3,7 @@
 #include "config.h"
 #include "captive_portal.h"
 #include "diagnostics.h"
+#include "ota_update.h"
 #include <ArduinoJson.h>
 #include <esp_camera.h>
 #include <mbedtls/sha256.h>
@@ -58,6 +59,7 @@ esp_err_t handleRoot(httpd_req_t *req) {
         html += "<button onclick='wake()'>Wake Camera</button>";
         html += "<div id='image'></div>";
         html += "<h2>System</h2>";
+        html += "<button onclick='location.href=\"/update\"' style='background:#4caf50'>🔄 OTA Update</button>";
         html += "<button onclick='restart()' style='background:#ff9800'>Restart Device</button>";
         html += "<button onclick='factoryReset()' style='background:#f44336'>Factory Reset</button>";
         html += "<p style='color:#666;font-size:12px'>Factory Reset will erase all WiFi networks and return to setup mode</p>";
@@ -586,6 +588,9 @@ void initWebServer() {
         };
         httpd_register_uri_handler(server, &wifi_connect_uri);
         
+        // Register OTA endpoints
+        registerOTAEndpoints(server);
+        
         Serial.println("✅ HTTP Server started successfully");
         Serial.println("   Registered endpoints:");
         Serial.println("   - / (root)");
@@ -597,6 +602,8 @@ void initWebServer() {
         Serial.println("   - /sleep, /wake");
         Serial.println("   - /restart, /factory-reset");
         Serial.println("   - /wifi-connect (POST)");
+        Serial.println("   - /update (OTA firmware update)");
+        Serial.println("   - /update/upload (POST)");
     } else {
         Serial.println("❌ Failed to start HTTP Server");
     }

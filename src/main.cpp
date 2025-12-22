@@ -21,6 +21,7 @@
 #include "captive_portal.h"
 #include "web_server.h"
 #include "diagnostics.h"
+#include "ota_update.h"
 
 // Global variables
 TaskHandle_t cameraTaskHandle = NULL;
@@ -156,6 +157,10 @@ void setup() {
         Serial.println(">>> STEP: Camera initialization completed");
         Serial.flush();
     }
+    
+    // Initialize OTA subsystem
+    Serial.println("Initializing OTA...");
+    initOTA();
     
     // Initialize web server (always needed for captive portal or normal operation)
     initWebServer();
