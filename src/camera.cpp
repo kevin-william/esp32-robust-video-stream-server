@@ -5,6 +5,8 @@
 #include <esp_camera.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
+#include <math.h>
+#include <WiFi.h>
 
 bool initCamera() {
     g_camera_diag.init_attempts++;
@@ -262,6 +264,12 @@ void optimizeCameraForStreaming() {
 }
 
 int adjustQualityBasedOnWiFi() {
+    // Check WiFi connection status
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected, skipping quality adjustment");
+        return g_config.camera.quality;
+    }
+    
     int rssi = WiFi.RSSI();
     int quality = g_config.camera.quality;  // Start with current quality
     
@@ -301,6 +309,12 @@ bool adjustResolutionBasedOnPerformance(float current_fps) {
         return false;
     }
     
+    // Validate FPS value
+    if (current_fps <= 0.0 || isnan(current_fps) || isinf(current_fps)) {
+        Serial.printf("Invalid FPS value: %.2f, skipping resolution adjustment\n", current_fps);
+        return false;
+    }
+    
     framesize_t current_size = (framesize_t)g_config.camera.framesize;
     framesize_t new_size = current_size;
     bool changed = false;
@@ -330,11 +344,16 @@ bool adjustResolutionBasedOnPerformance(float current_fps) {
     }
     
     if (changed && new_size != current_size) {
-        s->set_framesize(s, new_size);
-        g_config.camera.framesize = new_size;
-        Serial.printf("Resolution adjusted: %d -> %d (FPS: %.1f)\n", 
-                     current_size, new_size, current_fps);
-        return true;
+        int result = s->set_framesize(s, new_size);
+        if (result == ESP_OK) {
+            g_config.camera.framesize = new_size;
+            Serial.printf("Resolution adjusted: %d -> %d (FPS: %.1f)\n", 
+                         current_size, new_size, current_fps);
+            return true;
+        } else {
+            Serial.printf("Failed to set framesize %d, error: %d\n", new_size, result);
+            return false;
+        }
     }
     
     return false;

@@ -215,10 +215,14 @@ esp_err_t handleStream(httpd_req_t *req) {
     
     // Adaptive frame rate based on WiFi signal strength
     int target_delay_ms = 30;  // Default ~30 FPS target
-    int rssi = WiFi.RSSI();
+    int rssi = -100;  // Default to weak signal
+    
+    if (WiFi.status() == WL_CONNECTED) {
+        rssi = WiFi.RSSI();
+    }
     
     if (rssi > -60) {
-        target_delay_ms = 10;  // Strong signal: aim for high FPS (~100ms = 10 FPS effective)
+        target_delay_ms = 10;  // Strong signal: aim for high FPS
     } else if (rssi > -70) {
         target_delay_ms = 20;  // Good signal: aim for medium FPS  
     } else if (rssi > -80) {
@@ -290,7 +294,10 @@ esp_err_t handleStream(httpd_req_t *req) {
         // Log performance every 100 frames
         if (frame_count % 100 == 0) {
             float avg_frame_time = total_frame_time / (float)frame_count;
-            float avg_fps = 1000.0 / avg_frame_time;
+            float avg_fps = 0.0;
+            if (avg_frame_time > 0) {
+                avg_fps = 1000.0 / avg_frame_time;
+            }
             Serial.printf("Stream stats: %lu frames, avg %.1fms/frame (%.1f FPS)\n", 
                          frame_count, avg_frame_time, avg_fps);
             
@@ -304,15 +311,17 @@ esp_err_t handleStream(httpd_req_t *req) {
             last_quality_adjust = millis();
             
             // Re-evaluate target delay based on current RSSI
-            rssi = WiFi.RSSI();
-            if (rssi > -60) {
-                target_delay_ms = 10;
-            } else if (rssi > -70) {
-                target_delay_ms = 20;
-            } else if (rssi > -80) {
-                target_delay_ms = 30;
-            } else {
-                target_delay_ms = 50;
+            if (WiFi.status() == WL_CONNECTED) {
+                rssi = WiFi.RSSI();
+                if (rssi > -60) {
+                    target_delay_ms = 10;
+                } else if (rssi > -70) {
+                    target_delay_ms = 20;
+                } else if (rssi > -80) {
+                    target_delay_ms = 30;
+                } else {
+                    target_delay_ms = 50;
+                }
             }
         }
         
