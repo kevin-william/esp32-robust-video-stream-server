@@ -189,20 +189,61 @@ esp_err_t handleStream(httpd_req_t *req) {
     uint8_t *jpg_buf = NULL;
     char part_buf[64];
     
+    // Set streaming content type
     httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
     addCORSHeaders(req);
     
+    // Add optimized headers for streaming
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    httpd_resp_set_hdr(req, "Pragma", "no-cache");
+    httpd_resp_set_hdr(req, "Expires", "0");
+    httpd_resp_set_hdr(req, "Connection", "keep-alive");
+    httpd_resp_set_hdr(req, "X-Content-Type-Options", "nosniff");
+    
     Serial.println("🎥 MJPEG Stream started");
     
+    unsigned long last_frame_time = 0;
+    unsigned long frame_count = 0;
+    unsigned long total_frame_time = 0;
+    int consecutive_errors = 0;
+    const int max_consecutive_errors = 5;
+    
+    // Adaptive frame rate based on WiFi signal strength
+    int target_delay_ms = 30;  // Default ~30 FPS target
+    int rssi = WiFi.RSSI();
+    
+    if (rssi > -60) {
+        target_delay_ms = 10;  // Strong signal: aim for high FPS (~100ms = 10 FPS effective)
+    } else if (rssi > -70) {
+        target_delay_ms = 20;  // Good signal: aim for medium FPS  
+    } else if (rssi > -80) {
+        target_delay_ms = 30;  // Fair signal: conservative FPS
+    } else {
+        target_delay_ms = 50;  // Weak signal: reduce frame rate
+    }
+    
+    Serial.printf("Streaming with adaptive delay: %dms (RSSI: %d dBm)\n", target_delay_ms, rssi);
+    
     while(true) {
+        unsigned long frame_start = millis();
+        
         fb = esp_camera_fb_get();
         if (!fb) {
             Serial.println("Camera capture failed");
             g_diag.frame_errors++;
-            res = ESP_FAIL;
-            break;
+            consecutive_errors++;
+            
+            if (consecutive_errors >= max_consecutive_errors) {
+                Serial.printf("Too many consecutive errors (%d), terminating stream\n", consecutive_errors);
+                res = ESP_FAIL;
+                break;
+            }
+            
+            delay(100);  // Brief delay before retry
+            continue;
         }
         
+        consecutive_errors = 0;  // Reset error counter on success
         jpg_buf_len = fb->len;
         jpg_buf = fb->buf;
         
@@ -230,17 +271,34 @@ esp_err_t handleStream(httpd_req_t *req) {
         }
         
         // Update stats
+        frame_count++;
         g_diag.frame_count++;
         g_diag.total_frames_sent++;
         g_diag.total_bytes_sent += jpg_buf_len;
         g_diag.last_frame_time = millis();
         updateFrameStats();
         
-        // Small delay to prevent overwhelming the connection
-        delay(30); // ~30 FPS max
+        // Calculate actual frame time
+        unsigned long frame_time = millis() - frame_start;
+        total_frame_time += frame_time;
+        
+        // Log performance every 100 frames
+        if (frame_count % 100 == 0) {
+            float avg_frame_time = total_frame_time / (float)frame_count;
+            float avg_fps = 1000.0 / avg_frame_time;
+            Serial.printf("Stream stats: %lu frames, avg %.1fms/frame (%.1f FPS)\n", 
+                         frame_count, avg_frame_time, avg_fps);
+        }
+        
+        // Adaptive delay to control frame rate
+        // Only delay if frame processing was faster than target
+        if (frame_time < target_delay_ms) {
+            delay(target_delay_ms - frame_time);
+        }
+        // If frame took longer than target, send immediately (no delay)
     }
     
-    Serial.println("Stream ended");
+    Serial.printf("Stream ended after %lu frames\n", frame_count);
     return res;
 }
 

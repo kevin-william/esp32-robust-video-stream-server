@@ -58,6 +58,7 @@ void sdCardTask(void* parameter);
 bool initCamera();
 void deinitCamera();
 bool reinitCamera();
+void optimizeCameraForStreaming();
 camera_fb_t* captureFrame();
 void releaseFrame(camera_fb_t* fb);
 

@@ -59,21 +59,23 @@ bool initCamera() {
             // WROVER has 8MB PSRAM - can handle higher resolution
             config.frame_size = FRAMESIZE_SVGA;  // 800x600 - better quality for WROVER
             config.jpeg_quality = 12;  // Better quality with more PSRAM
-            config.fb_count = 2;
+            config.fb_count = 3;  // Triple buffering for smoother streaming
         #else
             // AI-Thinker has 4MB PSRAM
             config.frame_size = FRAMESIZE_QVGA;  // 320x240 - optimized for streaming
             config.jpeg_quality = 18;  // Higher number = lower quality = faster processing
-            config.fb_count = 2;
+            config.fb_count = 3;  // Triple buffering for smoother streaming
         #endif
+        config.fb_location = CAMERA_FB_IN_PSRAM;  // Explicitly allocate buffers in PSRAM
         config.grab_mode = CAMERA_GRAB_LATEST;  // Always get latest frame
-        Serial.printf("PSRAM found, using resolution with %d frame buffers\n", config.fb_count);
+        Serial.printf("PSRAM found, using resolution with %d frame buffers in PSRAM\n", config.fb_count);
     } else {
         config.frame_size = FRAMESIZE_QVGA;  // 320x240 - maximum performance
         config.jpeg_quality = 20;
-        config.fb_count = 2;  // 2 buffers even without PSRAM
+        config.fb_count = 2;  // 2 buffers for systems without PSRAM
+        config.fb_location = CAMERA_FB_IN_DRAM;  // Use DRAM when PSRAM not available
         config.grab_mode = CAMERA_GRAB_LATEST;  // Always get latest frame
-        Serial.println("PSRAM not found, using QVGA (320x240) with 2 frame buffers");
+        Serial.println("PSRAM not found, using QVGA (320x240) with 2 frame buffers in DRAM");
     }
     
     // Camera init
@@ -204,7 +206,59 @@ bool initCamera() {
     g_camera_diag.last_error_code = ESP_OK;
     g_camera_diag.last_error_msg = "";
     
+    // Apply streaming optimizations
+    optimizeCameraForStreaming();
+    
     return true;
+}
+
+void optimizeCameraForStreaming() {
+    sensor_t *s = esp_camera_sensor_get();
+    if (!s) {
+        Serial.println("❌ Failed to get camera sensor for optimization");
+        return;
+    }
+    
+    Serial.println("\n========================================");
+    Serial.println("Optimizing Camera for Streaming");
+    Serial.println("========================================");
+    
+    // Disable special effects for faster processing
+    s->set_special_effect(s, 0);  // No special effect
+    Serial.println("✓ Special effects disabled");
+    
+    // Enable automatic controls for better streaming quality
+    s->set_whitebal(s, 1);        // Enable auto white balance
+    s->set_awb_gain(s, 1);        // Enable AWB gain
+    s->set_gain_ctrl(s, 1);       // Enable AGC
+    s->set_exposure_ctrl(s, 1);   // Enable AEC
+    Serial.println("✓ Automatic controls enabled (AWB, AGC, AEC)");
+    
+    // Optimize AEC/AGC for low latency
+    // AEC sensor (auto exposure) - use faster convergence
+    s->set_aec2(s, 0);            // Disable AEC DSP for lower latency
+    s->set_ae_level(s, 0);        // Normal AE level
+    Serial.println("✓ AEC optimized for low latency");
+    
+    // AGC (auto gain) - moderate settings
+    s->set_agc_gain(s, 0);        // Auto-determined gain
+    s->set_gainceiling(s, (gainceiling_t)2);  // Moderate gain ceiling for less noise
+    Serial.println("✓ AGC configured for balanced performance");
+    
+    // Enable lens correction for better image quality
+    s->set_lenc(s, 1);            // Enable lens correction
+    s->set_bpc(s, 1);             // Enable black pixel correction
+    s->set_wpc(s, 1);             // Enable white pixel correction
+    s->set_raw_gma(s, 1);         // Enable gamma correction
+    Serial.println("✓ Image corrections enabled");
+    
+    // Disable downsize for full frame processing
+    s->set_dcw(s, 0);             // Disable downsize
+    Serial.println("✓ Downsize disabled for full resolution");
+    
+    Serial.println("========================================");
+    Serial.println("Camera optimized for streaming performance");
+    Serial.println("========================================\n");
 }
 
 void deinitCamera() {
