@@ -17,7 +17,7 @@ bool initCamera() {
         gpio_set_direction((gpio_num_t)PWDN_GPIO_NUM, GPIO_MODE_OUTPUT);
         gpio_set_level((gpio_num_t)PWDN_GPIO_NUM, 0);  // Active LOW - wake up
         ESP_LOGI(TAG, "Camera PWDN pin set to wake (LOW)");
-        vTaskDelay(pdMS_TO_TICKS(10)); // Wait for camera to power up
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_PWDN_DELAY_MS)); // Wait for camera to power up
     }
     
     camera_config_t config;
@@ -148,9 +148,8 @@ camera_fb_t* captureFrame() {
         camera_fb_t *fb = esp_camera_fb_get();
         if (!fb) {
             ESP_LOGE(TAG, "Failed to capture frame");
-        } else {
-            ESP_LOGD(TAG, "Frame captured: %d bytes, %dx%d", fb->len, fb->width, fb->height);
         }
+        // Note: Frame details logged only in verbose debug builds to avoid performance impact
         xSemaphoreGive(cameraMutex);
         return fb;
     }

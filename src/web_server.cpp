@@ -275,8 +275,8 @@ void handleStream(AsyncWebServerRequest *request) {
             // Return frame buffer to pool immediately
             esp_camera_fb_return(fb);
             
-            // Small delay for frame rate control (~15 FPS)
-            vTaskDelay(pdMS_TO_TICKS(66));
+            // Frame rate control - target ~15 FPS
+            vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_DELAY_MS));
             
             return pos;
         });
@@ -519,10 +519,9 @@ void handleReset(AsyncWebServerRequest *request) {
     // Small delay to ensure camera cleanup
     vTaskDelay(pdMS_TO_TICKS(100));
     
-    ESP_LOGI(TAG, "Executing esp_restart()...");
-    Serial.println("========================================");
-    Serial.println("HARD RESET - System restart initiated");
-    Serial.println("========================================");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "HARD RESET - System restart initiated");
+    ESP_LOGI(TAG, "========================================");
     
     // Perform hard reset
     esp_restart();

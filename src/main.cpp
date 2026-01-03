@@ -194,15 +194,13 @@ void setup() {
     ESP_LOGI(TAG, "Watchdog task created on Core %d", WEB_CORE);
     
     ESP_LOGI(TAG, "All FreeRTOS tasks created successfully");
-    Serial.println("All tasks created successfully");
-    Serial.println("====================================");
-    Serial.println("System ready!");
-    Serial.println("====================================");
-    Serial.println();
-    Serial.println("Architecture:");
-    Serial.printf("  Core 0 (PRO_CPU): WiFi + HTTP Server\n");
-    Serial.printf("  Core 1 (APP_CPU): Camera + Image Processing\n");
-    Serial.println("====================================");
+    ESP_LOGI(TAG, "====================================");
+    ESP_LOGI(TAG, "System ready!");
+    ESP_LOGI(TAG, "====================================");
+    ESP_LOGI(TAG, "Architecture:");
+    ESP_LOGI(TAG, "  Core 0 (PRO_CPU): WiFi + HTTP Server");
+    ESP_LOGI(TAG, "  Core 1 (APP_CPU): Camera + Image Processing");
+    ESP_LOGI(TAG, "====================================");
     
     ESP_LOGI(TAG, "System initialization complete");
     
