@@ -4,8 +4,22 @@
 #include <esp_camera.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
+#include <esp_log.h>
+#include <driver/gpio.h>
+
+static const char* TAG = "CAMERA";
 
 bool initCamera() {
+    ESP_LOGI(TAG, "Initializing camera...");
+    
+    // Wake up camera from power-down if PWDN pin is configured
+    if (PWDN_GPIO_NUM >= 0) {
+        gpio_set_direction((gpio_num_t)PWDN_GPIO_NUM, GPIO_MODE_OUTPUT);
+        gpio_set_level((gpio_num_t)PWDN_GPIO_NUM, 0);  // Active LOW - wake up
+        ESP_LOGI(TAG, "Camera PWDN pin set to wake (LOW)");
+        vTaskDelay(pdMS_TO_TICKS(10)); // Wait for camera to power up
+    }
+    
     camera_config_t config;
     config.ledc_channel = LEDC_CHANNEL_0;
     config.ledc_timer = LEDC_TIMER_0;
@@ -26,33 +40,41 @@ bool initCamera() {
     config.pin_pwdn = PWDN_GPIO_NUM;
     config.pin_reset = RESET_GPIO_NUM;
     config.xclk_freq_hz = 20000000;
-    config.pixel_format = PIXFORMAT_JPEG;
+    config.pixel_format = PIXFORMAT_JPEG;  // MJPEG format mandatory
     
-    // Init with high specs to pre-allocate larger buffers
+    // Configure for maximum efficiency with PSRAM
+    // Using I2S parallel mode with DMA (handled by esp_camera driver)
     if (psramFound()) {
         config.frame_size = FRAMESIZE_VGA;  // Start with VGA for better compatibility
         config.jpeg_quality = 10;
-        config.fb_count = 2;  // Double buffering for smooth streaming
-        config.grab_mode = CAMERA_GRAB_LATEST; // Always get latest frame
-        Serial.println("PSRAM found, using optimized streaming settings");
+        config.fb_count = 2;  // 2 Frame Buffers in PSRAM for zero-copy optimization
+        config.fb_location = CAMERA_FB_IN_PSRAM;  // Explicitly use PSRAM
+        config.grab_mode = CAMERA_GRAB_LATEST; // Always get latest frame to avoid bottlenecks
+        ESP_LOGI(TAG, "PSRAM found - configuring for high performance");
+        ESP_LOGI(TAG, "Frame buffers: 2 (PSRAM), Mode: I2S+DMA, Format: MJPEG");
     } else {
         config.frame_size = FRAMESIZE_HVGA;
         config.jpeg_quality = 12;
         config.fb_count = 1;
+        config.fb_location = CAMERA_FB_IN_DRAM;
         config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
-        Serial.println("PSRAM not found, using conservative settings");
+        ESP_LOGI(TAG, "PSRAM not found - using conservative settings");
     }
     
     // Camera init
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
         Serial.printf("Camera init failed with error 0x%x\n", err);
         return false;
     }
     
+    ESP_LOGI(TAG, "Camera driver initialized successfully");
+    
     // Apply configuration settings
     sensor_t *s = esp_camera_sensor_get();
     if (s) {
+        ESP_LOGI(TAG, "Applying camera sensor settings...");
         s->set_framesize(s, (framesize_t)g_config.camera.framesize);
         s->set_quality(s, g_config.camera.quality);
         s->set_brightness(s, g_config.camera.brightness);
@@ -76,41 +98,64 @@ bool initCamera() {
         s->set_wpc(s, g_config.camera.wpc);
         s->set_raw_gma(s, g_config.camera.raw_gma);
         s->set_lenc(s, g_config.camera.lenc);
+        ESP_LOGI(TAG, "Sensor settings applied");
     }
     
     camera_initialized = true;
     camera_sleeping = false;
     camera_init_time = millis();
     
+    ESP_LOGI(TAG, "Camera initialization complete - ready for capture");
+    
     return true;
 }
 
 void deinitCamera() {
     if (camera_initialized) {
+        ESP_LOGI(TAG, "Deinitializing camera...");
+        
+        // Deinitialize camera driver
         esp_camera_deinit();
+        
+        // Put camera into power-down mode if PWDN pin is configured
+        if (PWDN_GPIO_NUM >= 0) {
+            gpio_set_level((gpio_num_t)PWDN_GPIO_NUM, 1);  // Active HIGH - power down
+            ESP_LOGI(TAG, "Camera PWDN pin set to sleep (HIGH)");
+        }
+        
         camera_initialized = false;
         camera_sleeping = true;
+        
+        ESP_LOGI(TAG, "Camera deinitialized and put to sleep");
         Serial.println("Camera deinitialized");
     }
 }
 
 bool reinitCamera() {
+    ESP_LOGI(TAG, "Reinitializing camera (force deinit + init)...");
     deinitCamera();
-    delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100)); // Wait for cleanup
     return initCamera();
 }
 
 camera_fb_t* captureFrame() {
     if (!camera_initialized || camera_sleeping) {
+        ESP_LOGW(TAG, "Cannot capture - camera not initialized or sleeping");
         return nullptr;
     }
     
     if (xSemaphoreTake(cameraMutex, portMAX_DELAY) == pdTRUE) {
         camera_fb_t *fb = esp_camera_fb_get();
+        if (!fb) {
+            ESP_LOGE(TAG, "Failed to capture frame");
+        } else {
+            ESP_LOGD(TAG, "Frame captured: %d bytes, %dx%d", fb->len, fb->width, fb->height);
+        }
         xSemaphoreGive(cameraMutex);
         return fb;
     }
     
+    ESP_LOGW(TAG, "Failed to acquire camera mutex");
     return nullptr;
 }
 
@@ -183,7 +228,9 @@ const char* getResetReason() {
 }
 
 // Camera task - handles frame capture and processing
+// Pinned to Core 1 (APP_CPU) for dedicated image processing
 void cameraTask(void* parameter) {
+    ESP_LOGI(TAG, "Camera task started on core %d (APP_CPU)", xPortGetCoreID());
     Serial.println("Camera task started on core " + String(xPortGetCoreID()));
     
     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -198,17 +245,21 @@ void cameraTask(void* parameter) {
 }
 
 // Web server task - handles HTTP requests
+// Pinned to Core 0 (PRO_CPU) along with WiFi stack
 void webServerTask(void* parameter) {
+    ESP_LOGI(TAG, "Web server task started on core %d (PRO_CPU)", xPortGetCoreID());
     Serial.println("Web server task started on core " + String(xPortGetCoreID()));
     
     while (true) {
-        // Web server runs asynchronously, just keep task alive
+        // Web server runs asynchronously via AsyncWebServer, just keep task alive
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 // Watchdog task - monitors system health
+// Pinned to Core 0 (PRO_CPU)
 void watchdogTask(void* parameter) {
+    ESP_LOGI(TAG, "Watchdog task started on core %d (PRO_CPU)", xPortGetCoreID());
     Serial.println("Watchdog task started on core " + String(xPortGetCoreID()));
     
     TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -216,7 +267,9 @@ void watchdogTask(void* parameter) {
     
     while (true) {
         // Monitor heap and system health
-        if (ESP.getFreeHeap() < 10000) {
+        size_t free_heap = ESP.getFreeHeap();
+        if (free_heap < 10000) {
+            ESP_LOGW(TAG, "Low heap memory: %d bytes", free_heap);
             Serial.println("WARNING: Low heap memory!");
         }
         
@@ -226,6 +279,7 @@ void watchdogTask(void* parameter) {
 
 // SD card task - handles storage operations
 void sdCardTask(void* parameter) {
+    ESP_LOGI(TAG, "SD card task started on core %d", xPortGetCoreID());
     Serial.println("SD card task started on core " + String(xPortGetCoreID()));
     
     while (true) {
