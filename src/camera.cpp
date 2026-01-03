@@ -261,6 +261,85 @@ void optimizeCameraForStreaming() {
     Serial.println("========================================\n");
 }
 
+int adjustQualityBasedOnWiFi() {
+    int rssi = WiFi.RSSI();
+    int quality = g_config.camera.quality;  // Start with current quality
+    
+    // Adjust JPEG quality based on WiFi signal strength
+    // Lower quality (higher number) = smaller files = faster transmission on weak WiFi
+    if (rssi > -50) {
+        // Excellent signal: use best quality
+        quality = 10;
+    } else if (rssi > -60) {
+        // Very good signal: high quality
+        quality = 12;
+    } else if (rssi > -70) {
+        // Good signal: medium-high quality
+        quality = 15;
+    } else if (rssi > -80) {
+        // Fair signal: medium quality
+        quality = 18;
+    } else {
+        // Weak signal: lower quality for smaller file size
+        quality = 22;
+    }
+    
+    // Apply quality if changed
+    sensor_t *s = esp_camera_sensor_get();
+    if (s && quality != g_config.camera.quality) {
+        s->set_quality(s, quality);
+        g_config.camera.quality = quality;
+        Serial.printf("Quality adjusted to %d (RSSI: %d dBm)\n", quality, rssi);
+    }
+    
+    return quality;
+}
+
+bool adjustResolutionBasedOnPerformance(float current_fps) {
+    sensor_t *s = esp_camera_sensor_get();
+    if (!s) {
+        return false;
+    }
+    
+    framesize_t current_size = (framesize_t)g_config.camera.framesize;
+    framesize_t new_size = current_size;
+    bool changed = false;
+    
+    // If FPS is too low, drop resolution
+    if (current_fps < 5.0 && current_size > FRAMESIZE_QVGA) {
+        // Drop down one resolution level
+        if (current_size == FRAMESIZE_SVGA) {
+            new_size = FRAMESIZE_VGA;  // 800x600 -> 640x480
+        } else if (current_size == FRAMESIZE_VGA) {
+            new_size = FRAMESIZE_CIF;  // 640x480 -> 400x296
+        } else if (current_size == FRAMESIZE_CIF) {
+            new_size = FRAMESIZE_QVGA;  // 400x296 -> 320x240
+        }
+        changed = true;
+    } 
+    // If FPS is very high, we can try to increase resolution
+    else if (current_fps > 20.0 && current_size < FRAMESIZE_SVGA && psramFound()) {
+        if (current_size == FRAMESIZE_QVGA) {
+            new_size = FRAMESIZE_CIF;  // 320x240 -> 400x296
+        } else if (current_size == FRAMESIZE_CIF) {
+            new_size = FRAMESIZE_VGA;  // 400x296 -> 640x480
+        } else if (current_size == FRAMESIZE_VGA) {
+            new_size = FRAMESIZE_SVGA;  // 640x480 -> 800x600
+        }
+        changed = true;
+    }
+    
+    if (changed && new_size != current_size) {
+        s->set_framesize(s, new_size);
+        g_config.camera.framesize = new_size;
+        Serial.printf("Resolution adjusted: %d -> %d (FPS: %.1f)\n", 
+                     current_size, new_size, current_fps);
+        return true;
+    }
+    
+    return false;
+}
+
 void deinitCamera() {
     if (camera_initialized) {
         esp_camera_deinit();

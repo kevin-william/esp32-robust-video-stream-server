@@ -207,6 +207,11 @@ esp_err_t handleStream(httpd_req_t *req) {
     unsigned long total_frame_time = 0;
     int consecutive_errors = 0;
     const int max_consecutive_errors = 5;
+    unsigned long last_quality_adjust = 0;
+    const unsigned long quality_adjust_interval = 10000;  // Adjust quality every 10 seconds
+    
+    // Initial quality adjustment based on WiFi
+    adjustQualityBasedOnWiFi();
     
     // Adaptive frame rate based on WiFi signal strength
     int target_delay_ms = 30;  // Default ~30 FPS target
@@ -288,6 +293,27 @@ esp_err_t handleStream(httpd_req_t *req) {
             float avg_fps = 1000.0 / avg_frame_time;
             Serial.printf("Stream stats: %lu frames, avg %.1fms/frame (%.1f FPS)\n", 
                          frame_count, avg_frame_time, avg_fps);
+            
+            // Check if we should adjust resolution based on performance
+            adjustResolutionBasedOnPerformance(avg_fps);
+        }
+        
+        // Periodically adjust quality based on WiFi conditions
+        if (millis() - last_quality_adjust > quality_adjust_interval) {
+            adjustQualityBasedOnWiFi();
+            last_quality_adjust = millis();
+            
+            // Re-evaluate target delay based on current RSSI
+            rssi = WiFi.RSSI();
+            if (rssi > -60) {
+                target_delay_ms = 10;
+            } else if (rssi > -70) {
+                target_delay_ms = 20;
+            } else if (rssi > -80) {
+                target_delay_ms = 30;
+            } else {
+                target_delay_ms = 50;
+            }
         }
         
         // Adaptive delay to control frame rate

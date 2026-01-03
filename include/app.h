@@ -59,6 +59,8 @@ bool initCamera();
 void deinitCamera();
 bool reinitCamera();
 void optimizeCameraForStreaming();
+int adjustQualityBasedOnWiFi();
+bool adjustResolutionBasedOnPerformance(float current_fps);
 camera_fb_t* captureFrame();
 void releaseFrame(camera_fb_t* fb);
 
