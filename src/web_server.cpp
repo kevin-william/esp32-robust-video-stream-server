@@ -2,8 +2,8 @@
 #include "app.h"
 #include "config.h"
 #include "captive_portal.h"
+#include "camera_i2s.h"
 #include <ArduinoJson.h>
-#include <esp_camera.h>
 #include <mbedtls/sha256.h>
 #include <esp_log.h>
 #include <esp_wifi.h>
@@ -239,8 +239,8 @@ void handleStream(AsyncWebServerRequest *request) {
     
     AsyncWebServerResponse *response = request->beginChunkedResponse("multipart/x-mixed-replace; boundary=frame",
         [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-            // Capture a new frame using zero-copy approach
-            camera_fb_t *fb = esp_camera_fb_get();
+            // Capture a new frame using zero-copy approach from custom I2S+DMA driver
+            camera_fb_t *fb = camera_i2s_fb_get();
             if (!fb) {
                 ESP_LOGE(TAG, "Stream: Camera capture failed");
                 return 0; // End stream
@@ -254,7 +254,7 @@ void handleStream(AsyncWebServerRequest *request) {
             
             // Check if buffer is large enough
             if (totalSize > maxLen) {
-                esp_camera_fb_return(fb);
+                camera_i2s_fb_return(fb);
                 ESP_LOGW(TAG, "Stream buffer too small for frame");
                 return 0;
             }
@@ -273,7 +273,7 @@ void handleStream(AsyncWebServerRequest *request) {
             buffer[pos++] = '\n';
             
             // Return frame buffer to pool immediately
-            esp_camera_fb_return(fb);
+            camera_i2s_fb_return(fb);
             
             // Frame rate control - target ~15 FPS
             vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_DELAY_MS));
@@ -299,43 +299,56 @@ void handleControl(AsyncWebServerRequest *request) {
     String var = request->getParam("var")->value();
     String val = request->getParam("val")->value();
     
-    sensor_t *s = esp_camera_sensor_get();
-    if (!s) {
+    if (!camera_initialized) {
         request->send(500, "application/json", "{\"error\":\"Camera not available\"}");
         return;
     }
     
-    int res = 0;
+    esp_err_t res = ESP_OK;
     
     if (var == "framesize") {
-        res = s->set_framesize(s, (framesize_t)val.toInt());
-        g_config.camera.framesize = val.toInt();
+        res = ov2640_set_framesize((framesize_t)val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.framesize = val.toInt();
+        }
     } else if (var == "quality") {
-        res = s->set_quality(s, val.toInt());
-        g_config.camera.quality = val.toInt();
+        res = ov2640_set_quality(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.quality = val.toInt();
+        }
     } else if (var == "brightness") {
-        res = s->set_brightness(s, val.toInt());
-        g_config.camera.brightness = val.toInt();
+        res = ov2640_set_brightness(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.brightness = val.toInt();
+        }
     } else if (var == "contrast") {
-        res = s->set_contrast(s, val.toInt());
-        g_config.camera.contrast = val.toInt();
+        res = ov2640_set_contrast(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.contrast = val.toInt();
+        }
     } else if (var == "saturation") {
-        res = s->set_saturation(s, val.toInt());
-        g_config.camera.saturation = val.toInt();
+        res = ov2640_set_saturation(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.saturation = val.toInt();
+        }
     } else if (var == "hmirror") {
-        res = s->set_hmirror(s, val.toInt());
-        g_config.camera.hmirror = val.toInt();
+        res = ov2640_set_hmirror(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.hmirror = val.toInt();
+        }
     } else if (var == "vflip") {
-        res = s->set_vflip(s, val.toInt());
-        g_config.camera.vflip = val.toInt();
+        res = ov2640_set_vflip(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.vflip = val.toInt();
+        }
     } else if (var == "led_intensity") {
         int intensity = val.toInt();
         setLED(intensity);
         g_config.camera.led_intensity = intensity;
     }
     
-    String response = res == 0 ? "{\"success\":true}" : "{\"error\":\"Failed to set " + var + "\"}";
-    request->send(res == 0 ? 200 : 500, "application/json", response);
+    String response = (res == ESP_OK) ? "{\"success\":true}" : "{\"error\":\"Failed to set " + var + "\"}";
+    request->send((res == ESP_OK) ? 200 : 500, "application/json", response);
 }
 
 void handleSleep(AsyncWebServerRequest *request) {
@@ -567,7 +580,7 @@ void handleStop(AsyncWebServerRequest *request) {
 /**
  * GET /start - Start/restart camera service
  * This endpoint:
- * 1. If camera is running, forces esp_camera_deinit() then esp_camera_init()
+ * 1. If camera is running, forces camera_i2s_deinit() then camera_i2s_init()
  * 2. If camera is stopped, initializes it
  * 3. Ensures hardware is properly reset
  * 4. Disables WiFi power save mode
@@ -583,7 +596,7 @@ void handleStart(AsyncWebServerRequest *request) {
     
     if (camera_initialized) {
         ESP_LOGI(TAG, "Camera already running - forcing reinitialization");
-        // Force complete reinitialization
+        // Force complete reinitialization with custom I2S+DMA driver
         success = reinitCamera();
     } else {
         ESP_LOGI(TAG, "Camera stopped - initializing");

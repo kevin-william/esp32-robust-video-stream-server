@@ -2,7 +2,7 @@
 #define APP_H
 
 #include <Arduino.h>
-#include "esp_camera.h"
+#include "camera_i2s.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
