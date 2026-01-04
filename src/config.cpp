@@ -1,13 +1,15 @@
 #include "config.h"
-#include "storage.h"
+
 #include <ArduinoJson.h>
 #include <mbedtls/sha256.h>
+
+#include "storage.h"
 
 void setDefaultConfiguration() {
     // Clear network list
     g_config.network_count = 0;
     memset(g_config.networks, 0, sizeof(g_config.networks));
-    
+
     // Camera defaults
     g_config.camera.framesize = DEFAULT_FRAMESIZE;
     g_config.camera.quality = DEFAULT_QUALITY;
@@ -33,12 +35,12 @@ void setDefaultConfiguration() {
     g_config.camera.raw_gma = 1;
     g_config.camera.lenc = 1;
     g_config.camera.led_intensity = 0;
-    
+
     // System defaults
     strcpy(g_config.admin_password_hash, "");
     g_config.ota_enabled = false;
     strcpy(g_config.ota_password, "");
-    g_config.log_level = 2; // INFO
+    g_config.log_level = 2;  // INFO
     g_config.use_https = false;
     g_config.server_port = 80;
 }
@@ -49,7 +51,7 @@ bool validateConfiguration(const JsonDocument& doc) {
         Serial.println("Config validation failed: missing camera section");
         return false;
     }
-    
+
     // Validate camera settings ranges
     JsonObjectConst camera = doc["camera"].as<JsonObjectConst>();
     if (camera.containsKey("quality")) {
@@ -59,13 +61,13 @@ bool validateConfiguration(const JsonDocument& doc) {
             return false;
         }
     }
-    
+
     return true;
 }
 
 bool loadConfiguration() {
     StaticJsonDocument<CONFIG_JSON_SIZE> doc;
-    
+
     // Try SD card first
     if (isSDCardMounted()) {
         String configStr = readFile(CONFIG_FILE_PATH);
@@ -79,7 +81,7 @@ bool loadConfiguration() {
             }
         }
     }
-    
+
     // Try NVS fallback
     {
         String configStr = readFromNVS("config", "");
@@ -95,7 +97,7 @@ bool loadConfiguration() {
             goto parse_config;
         }
     }
-    
+
     return false;
 
 parse_config:
@@ -104,27 +106,30 @@ parse_config:
         JsonArray networks = doc["networks"];
         g_config.network_count = 0;
         for (JsonObject network : networks) {
-            if (g_config.network_count >= MAX_WIFI_NETWORKS) break;
-            
+            if (g_config.network_count >= MAX_WIFI_NETWORKS)
+                break;
+
             const char* ssid = network["ssid"];
             const char* password = network["password"];
             int priority = network["priority"] | 0;
-            
+
             if (ssid && password) {
                 strncpy(g_config.networks[g_config.network_count].ssid, ssid, 31);
                 strncpy(g_config.networks[g_config.network_count].password, password, 63);
                 g_config.networks[g_config.network_count].priority = priority;
-                
+
                 // Parse static IP settings (optional)
-                g_config.networks[g_config.network_count].use_static_ip = network["use_static_ip"] | false;
-                if (g_config.networks[g_config.network_count].use_static_ip && network.containsKey("static_ip")) {
+                g_config.networks[g_config.network_count].use_static_ip =
+                    network["use_static_ip"] | false;
+                if (g_config.networks[g_config.network_count].use_static_ip &&
+                    network.containsKey("static_ip")) {
                     JsonArray ip = network["static_ip"];
                     if (ip.size() == 4) {
                         for (int i = 0; i < 4; i++) {
                             g_config.networks[g_config.network_count].static_ip[i] = ip[i];
                         }
                     }
-                    
+
                     if (network.containsKey("gateway")) {
                         JsonArray gw = network["gateway"];
                         if (gw.size() == 4) {
@@ -134,12 +139,12 @@ parse_config:
                         }
                     }
                 }
-                
+
                 g_config.network_count++;
             }
         }
     }
-    
+
     // Parse camera settings
     if (doc.containsKey("camera")) {
         JsonObjectConst camera = doc["camera"].as<JsonObjectConst>();
@@ -168,7 +173,7 @@ parse_config:
         g_config.camera.lenc = camera["lenc"] | 1;
         g_config.camera.led_intensity = camera["led_intensity"] | 0;
     }
-    
+
     // Parse system settings
     if (doc.containsKey("admin_password_hash")) {
         strncpy(g_config.admin_password_hash, doc["admin_password_hash"], 64);
@@ -180,13 +185,13 @@ parse_config:
     g_config.log_level = doc["log_level"] | 2;
     g_config.use_https = doc["use_https"] | false;
     g_config.server_port = doc["server_port"] | 80;
-    
+
     return true;
 }
 
 bool saveConfiguration() {
     StaticJsonDocument<CONFIG_JSON_SIZE> doc;
-    
+
     // Build networks array
     JsonArray networks = doc.createNestedArray("networks");
     for (int i = 0; i < g_config.network_count; i++) {
@@ -194,18 +199,20 @@ bool saveConfiguration() {
         network["ssid"] = g_config.networks[i].ssid;
         network["password"] = g_config.networks[i].password;
         network["priority"] = g_config.networks[i].priority;
-        
+
         // Save static IP settings if configured
         if (g_config.networks[i].use_static_ip) {
             network["use_static_ip"] = true;
             JsonArray ip = network.createNestedArray("static_ip");
-            for (int j = 0; j < 4; j++) ip.add(g_config.networks[i].static_ip[j]);
-            
+            for (int j = 0; j < 4; j++)
+                ip.add(g_config.networks[i].static_ip[j]);
+
             JsonArray gw = network.createNestedArray("gateway");
-            for (int j = 0; j < 4; j++) gw.add(g_config.networks[i].gateway[j]);
+            for (int j = 0; j < 4; j++)
+                gw.add(g_config.networks[i].gateway[j]);
         }
     }
-    
+
     // Build camera settings
     JsonObject camera = doc.createNestedObject("camera");
     camera["framesize"] = g_config.camera.framesize;
@@ -232,7 +239,7 @@ bool saveConfiguration() {
     camera["raw_gma"] = g_config.camera.raw_gma;
     camera["lenc"] = g_config.camera.lenc;
     camera["led_intensity"] = g_config.camera.led_intensity;
-    
+
     // System settings
     doc["admin_password_hash"] = g_config.admin_password_hash;
     doc["ota_enabled"] = g_config.ota_enabled;
@@ -240,11 +247,11 @@ bool saveConfiguration() {
     doc["log_level"] = g_config.log_level;
     doc["use_https"] = g_config.use_https;
     doc["server_port"] = g_config.server_port;
-    
+
     // Serialize to string
     String output;
     serializeJsonPretty(doc, output);
-    
+
     // Try to save to SD card first
     bool savedToSD = false;
     if (isSDCardMounted()) {
@@ -254,27 +261,27 @@ bool saveConfiguration() {
             Serial.println("Configuration saved to SD card");
         }
     }
-    
+
     // Always save to NVS as backup
     bool savedToNVS = saveToNVS("config", output);
     if (savedToNVS) {
         Serial.println("Configuration saved to NVS");
     }
-    
+
     return savedToSD || savedToNVS;
 }
 
 bool resetConfiguration() {
     setDefaultConfiguration();
-    
+
     // Delete from SD
     if (isSDCardMounted()) {
         deleteFile(CONFIG_FILE_PATH);
         deleteFile(CONFIG_BACKUP_PATH);
     }
-    
+
     // Clear NVS
     clearNVS();
-    
+
     return true;
 }

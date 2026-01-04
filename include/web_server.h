@@ -21,15 +21,16 @@ void handleSleep(AsyncWebServerRequest *request);
 void handleWake(AsyncWebServerRequest *request);
 void handleRestart(AsyncWebServerRequest *request);
 void handleFactoryReset(AsyncWebServerRequest *request);
-void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+void handleWiFiConnect(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index,
+                       size_t total);
 void handleConfig(AsyncWebServerRequest *request);
 void handleOTA(AsyncWebServerRequest *request);
 void handleNotFound(AsyncWebServerRequest *request);
 
 // New endpoints as per requirements
-void handleReset(AsyncWebServerRequest *request);    // Hard/Brute Reset with cleanup
-void handleStop(AsyncWebServerRequest *request);     // Stop camera service and power-down
-void handleStart(AsyncWebServerRequest *request);    // Start/restart camera service
+void handleReset(AsyncWebServerRequest *request);  // Hard/Brute Reset with cleanup
+void handleStop(AsyncWebServerRequest *request);   // Stop camera service and power-down
+void handleStart(AsyncWebServerRequest *request);  // Start/restart camera service
 
 // Stream helper functions
 void streamJPEG(AsyncWebServerRequest *request);
@@ -40,6 +41,6 @@ void addCORSHeaders(AsyncWebServerResponse *response);
 // Authentication
 bool checkAuthentication(AsyncWebServerRequest *request);
 String generateCSRFToken();
-bool validateCSRFToken(const String& token);
+bool validateCSRFToken(const String &token);
 
-#endif // WEB_SERVER_H
+#endif  // WEB_SERVER_H

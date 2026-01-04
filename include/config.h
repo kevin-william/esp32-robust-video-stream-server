@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+
 #include "esp_camera.h"
 
 // Configuration file paths
@@ -16,18 +17,18 @@
 
 // Default camera settings
 #define DEFAULT_FRAMESIZE FRAMESIZE_HVGA  // 480x320 - optimized for performance
-#define DEFAULT_QUALITY 10                 // 0-63, lower is better (10 = good quality/speed balance)
-#define DEFAULT_BRIGHTNESS 0               // -2 to 2
-#define DEFAULT_CONTRAST 0                 // -2 to 2
-#define DEFAULT_SATURATION 0               // -2 to 2
+#define DEFAULT_QUALITY 10                // 0-63, lower is better (10 = good quality/speed balance)
+#define DEFAULT_BRIGHTNESS 0              // -2 to 2
+#define DEFAULT_CONTRAST 0                // -2 to 2
+#define DEFAULT_SATURATION 0              // -2 to 2
 
 // Memory and performance settings
 #define MAX_WIFI_NETWORKS 3
 #define CONFIG_JSON_SIZE 2048
 #define STREAM_BOUNDARY "frame"
-#define DEFAULT_FRAMERATE 15              // Target FPS for streaming
-#define STREAM_FRAME_DELAY_MS 66          // Delay between frames (~15 FPS)
-#define CAMERA_PWDN_DELAY_MS 10           // Camera power-up delay
+#define DEFAULT_FRAMERATE 15      // Target FPS for streaming
+#define STREAM_FRAME_DELAY_MS 66  // Delay between frames (~15 FPS)
+#define CAMERA_PWDN_DELAY_MS 10   // Camera power-up delay
 
 // Task priorities and core affinity
 #define CAMERA_TASK_PRIORITY 2
@@ -51,30 +52,30 @@ struct WiFiNetwork {
 
 // Camera settings structure
 struct CameraSettings {
-    int framesize;     // framesize_t
-    int quality;       // 0-63
-    int brightness;    // -2 to 2
-    int contrast;      // -2 to 2
-    int saturation;    // -2 to 2
-    int gainceiling;   // 0 to 6
-    int colorbar;      // 0 or 1
-    int awb;           // Auto white balance
-    int agc;           // Auto gain control
-    int aec;           // Auto exposure control
-    int hmirror;       // Horizontal mirror
-    int vflip;         // Vertical flip
-    int awb_gain;      // AWB gain
-    int agc_gain;      // AGC gain
-    int aec_value;     // AEC value
+    int framesize;    // framesize_t
+    int quality;      // 0-63
+    int brightness;   // -2 to 2
+    int contrast;     // -2 to 2
+    int saturation;   // -2 to 2
+    int gainceiling;  // 0 to 6
+    int colorbar;     // 0 or 1
+    int awb;          // Auto white balance
+    int agc;          // Auto gain control
+    int aec;          // Auto exposure control
+    int hmirror;      // Horizontal mirror
+    int vflip;        // Vertical flip
+    int awb_gain;     // AWB gain
+    int agc_gain;     // AGC gain
+    int aec_value;    // AEC value
     int special_effect;
     int wb_mode;
     int ae_level;
-    int dcw;           // Downsize enable
-    int bpc;           // Black pixel correct
-    int wpc;           // White pixel correct
-    int raw_gma;       // Gamma correction
-    int lenc;          // Lens correction
-    int led_intensity; // Flash LED 0-255
+    int dcw;            // Downsize enable
+    int bpc;            // Black pixel correct
+    int wpc;            // White pixel correct
+    int raw_gma;        // Gamma correction
+    int lenc;           // Lens correction
+    int led_intensity;  // Flash LED 0-255
 };
 
 // System configuration structure
@@ -101,4 +102,4 @@ bool resetConfiguration();
 bool validateConfiguration(const JsonDocument& doc);
 void setDefaultConfiguration();
 
-#endif // CONFIG_H
+#endif  // CONFIG_H
