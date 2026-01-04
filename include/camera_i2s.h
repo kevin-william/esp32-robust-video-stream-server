@@ -3,6 +3,11 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <esp_err.h>
+
+// DMA buffer configuration constants
+#define DMA_BUFFER_COUNT    4      // Number of DMA buffers
+#define DMA_BUFFER_SIZE     1024   // Size of each DMA buffer in bytes
 
 // Frame buffer structure (compatible with existing code interface)
 typedef struct {

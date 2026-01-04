@@ -442,12 +442,20 @@ static esp_err_t xclk_init(int pin, uint32_t freq) {
 }
 
 // Frame capture task
+// TODO: Implement actual I2S+DMA frame capture logic
+// This task should:
+// 1. Wait for VSYNC signal (frame start)
+// 2. Read data from I2S DMA buffers
+// 3. Detect JPEG markers (0xFFD8 start, 0xFFD9 end)
+// 4. Assemble complete JPEG frame
+// 5. Store in frame buffer
 static void camera_capture_task(void *arg) {
     ESP_LOGI(TAG, "Camera capture task started on core %d", xPortGetCoreID());
+    ESP_LOGW(TAG, "TODO: Implement actual I2S+DMA frame capture (currently using mock data)");
     
     while (cam_state.capture_running) {
-        // Frame capture logic will be implemented here
-        // This is a placeholder for the actual DMA-based capture
+        // Placeholder: actual capture logic goes here
+        // For now, just sleep to keep task alive
         vTaskDelay(pdMS_TO_TICKS(100));
     }
     
@@ -518,25 +526,62 @@ esp_err_t camera_i2s_init(const camera_config_t *config) {
         return err;
     }
     
-    // Allocate frame buffers
+    // Allocate frame buffers with actual image data storage
     cam_state.fb_count = config->fb_count;
-    size_t fb_alloc_size = sizeof(frame_buffer_slot_t) * config->fb_count;
+    size_t fb_slots_size = sizeof(frame_buffer_slot_t) * config->fb_count;
+    
+    // Calculate buffer size based on resolution
+    // VGA (640x480) JPEG typically ~20-60KB depending on quality
+    size_t jpeg_buffer_size = 65536;  // 64KB per frame buffer
     
     if (config->use_psram && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
-        cam_state.frame_buffers = (frame_buffer_slot_t*)heap_caps_malloc(fb_alloc_size, MALLOC_CAP_SPIRAM);
-        ESP_LOGI(TAG, "Allocated %d frame buffers in PSRAM", config->fb_count);
+        cam_state.frame_buffers = (frame_buffer_slot_t*)heap_caps_malloc(fb_slots_size, MALLOC_CAP_SPIRAM);
+        ESP_LOGI(TAG, "Allocated %d frame buffer slots in PSRAM", config->fb_count);
     } else {
-        cam_state.frame_buffers = (frame_buffer_slot_t*)malloc(fb_alloc_size);
-        ESP_LOGI(TAG, "Allocated %d frame buffers in DRAM", config->fb_count);
+        cam_state.frame_buffers = (frame_buffer_slot_t*)malloc(fb_slots_size);
+        ESP_LOGI(TAG, "Allocated %d frame buffer slots in DRAM", config->fb_count);
     }
     
     if (!cam_state.frame_buffers) {
-        ESP_LOGE(TAG, "Failed to allocate frame buffers");
+        ESP_LOGE(TAG, "Failed to allocate frame buffer slots");
         i2s_driver_uninstall(I2S_PORT);
         return ESP_ERR_NO_MEM;
     }
     
-    memset(cam_state.frame_buffers, 0, fb_alloc_size);
+    memset(cam_state.frame_buffers, 0, fb_slots_size);
+    
+    // Allocate JPEG data buffers for each frame buffer
+    for (size_t i = 0; i < cam_state.fb_count; i++) {
+        if (config->use_psram && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
+            cam_state.frame_buffers[i].fb.buf = (uint8_t*)heap_caps_malloc(jpeg_buffer_size, MALLOC_CAP_SPIRAM);
+        } else {
+            cam_state.frame_buffers[i].fb.buf = (uint8_t*)malloc(jpeg_buffer_size);
+        }
+        
+        if (!cam_state.frame_buffers[i].fb.buf) {
+            ESP_LOGE(TAG, "Failed to allocate JPEG buffer for frame %d", i);
+            // Cleanup already allocated buffers
+            for (size_t j = 0; j < i; j++) {
+                free(cam_state.frame_buffers[j].fb.buf);
+            }
+            free(cam_state.frame_buffers);
+            i2s_driver_uninstall(I2S_PORT);
+            return ESP_ERR_NO_MEM;
+        }
+        
+        cam_state.frame_buffers[i].fb.len = 0;  // Will be set when frame is captured
+        cam_state.frame_buffers[i].fb.width = 640;  // VGA default
+        cam_state.frame_buffers[i].fb.height = 480;
+        cam_state.frame_buffers[i].fb.timestamp = 0;
+        cam_state.frame_buffers[i].fb.priv = (void*)jpeg_buffer_size;  // Store max size
+        cam_state.frame_buffers[i].in_use = false;
+        
+        ESP_LOGI(TAG, "Frame buffer %d: buf=%p, max_size=%d", i, 
+                 cam_state.frame_buffers[i].fb.buf, jpeg_buffer_size);
+    }
+    
+    ESP_LOGI(TAG, "✓ Allocated %d JPEG buffers of %d bytes each", 
+             config->fb_count, jpeg_buffer_size);
     
     // Create mutex for frame buffer management
     cam_state.frame_mutex = xSemaphoreCreateMutex();
@@ -590,8 +635,14 @@ esp_err_t camera_i2s_deinit(void) {
     // Uninstall I2S driver
     i2s_driver_uninstall(I2S_PORT);
     
-    // Free frame buffers
+    // Free JPEG buffers and frame buffer slots
     if (cam_state.frame_buffers) {
+        for (size_t i = 0; i < cam_state.fb_count; i++) {
+            if (cam_state.frame_buffers[i].fb.buf) {
+                free(cam_state.frame_buffers[i].fb.buf);
+                cam_state.frame_buffers[i].fb.buf = NULL;
+            }
+        }
         free(cam_state.frame_buffers);
         cam_state.frame_buffers = NULL;
     }
@@ -619,14 +670,47 @@ esp_err_t camera_i2s_deinit(void) {
     return ESP_OK;
 }
 
+// ============================================================================
+// MOCK JPEG GENERATION (for testing)
+// ============================================================================
+// TODO: Replace with actual I2S+DMA frame capture from OV2640
+// This generates a minimal valid JPEG for testing the system architecture
+static void generate_test_jpeg(uint8_t *buf, size_t *len) {
+    // Minimal JPEG structure: SOI + APP0 + SOF0 + DQT + DHT + SOS + data + EOI
+    // This is a tiny 8x8 gray test image
+    static const uint8_t test_jpeg[] = {
+        0xFF, 0xD8,  // SOI (Start of Image)
+        0xFF, 0xE0,  // APP0
+        0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+        0xFF, 0xDB,  // DQT (Quantization Table)
+        0x00, 0x43, 0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09, 0x09,
+        0x08, 0x0A, 0x0C, 0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12, 0x13, 0x0F, 0x14, 0x1D,
+        0x1A, 0x1F, 0x1E, 0x1D, 0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20, 0x22, 0x2C, 0x23,
+        0x1C, 0x1C, 0x28, 0x37, 0x29, 0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27, 0x39, 0x3D,
+        0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34, 0x32,
+        0xFF, 0xC0,  // SOF0 (Start of Frame)
+        0x00, 0x0B, 0x08, 0x00, 0x08, 0x00, 0x08, 0x01, 0x01, 0x11, 0x00,
+        0xFF, 0xC4,  // DHT (Huffman Table)
+        0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x09,
+        0xFF, 0xDA,  // SOS (Start of Scan)
+        0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00,
+        0xD2, 0xCF, 0x20,  // Compressed image data
+        0xFF, 0xD9   // EOI (End of Image)
+    };
+    
+    memcpy(buf, test_jpeg, sizeof(test_jpeg));
+    *len = sizeof(test_jpeg);
+}
+
 camera_fb_t* camera_i2s_fb_get(void) {
     if (!cam_state.initialized) {
         ESP_LOGW(TAG, "Camera not initialized");
         return NULL;
     }
     
-    // This is a simplified implementation
-    // In production, this would return actual captured frames from DMA buffers
+    // TODO: Replace this mock implementation with actual I2S+DMA frame capture
+    // Current implementation generates test JPEG for system architecture validation
     
     if (xSemaphoreTake(cam_state.frame_mutex, pdMS_TO_TICKS(1000)) != pdTRUE) {
         ESP_LOGW(TAG, "Failed to acquire frame mutex");
@@ -637,10 +721,19 @@ camera_fb_t* camera_i2s_fb_get(void) {
     for (size_t i = 0; i < cam_state.fb_count; i++) {
         if (!cam_state.frame_buffers[i].in_use) {
             cam_state.frame_buffers[i].in_use = true;
+            
+            // Generate mock JPEG for testing
+            // TODO: Replace with actual frame capture from I2S+DMA
+            size_t jpeg_len = 0;
+            generate_test_jpeg(cam_state.frame_buffers[i].fb.buf, &jpeg_len);
+            cam_state.frame_buffers[i].fb.len = jpeg_len;
+            cam_state.frame_buffers[i].fb.timestamp = millis();
+            
+            ESP_LOGD(TAG, "Returning test frame buffer %d (mock JPEG, %d bytes)", i, jpeg_len);
+            
             xSemaphoreGive(cam_state.frame_mutex);
             
             // Return pointer to frame buffer
-            // Note: In full implementation, this would contain actual JPEG data
             return &cam_state.frame_buffers[i].fb;
         }
     }
