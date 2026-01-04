@@ -25,7 +25,9 @@
 #define MAX_WIFI_NETWORKS 3
 #define CONFIG_JSON_SIZE 2048
 #define STREAM_BOUNDARY "frame"
-#define DEFAULT_FRAMERATE 10
+#define DEFAULT_FRAMERATE 15              // Target FPS for streaming
+#define STREAM_FRAME_DELAY_MS 66          // Delay between frames (~15 FPS)
+#define CAMERA_PWDN_DELAY_MS 10           // Camera power-up delay
 
 // Task priorities and core affinity
 #define CAMERA_TASK_PRIORITY 2

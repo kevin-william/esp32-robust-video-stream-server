@@ -2,9 +2,13 @@
 #include "app.h"
 #include "config.h"
 #include "captive_portal.h"
+#include "camera_i2s.h"
 #include <ArduinoJson.h>
-#include <esp_camera.h>
 #include <mbedtls/sha256.h>
+#include <esp_log.h>
+#include <esp_wifi.h>
+
+static const char* TAG = "WEB_SERVER";
 
 AsyncWebServer server(80);
 
@@ -121,6 +125,11 @@ void initWebServer() {
     server.on("/restart", HTTP_GET, handleRestart);
     server.on("/factory-reset", HTTP_GET, handleFactoryReset);
     
+    // New endpoints as per requirements
+    server.on("/reset", HTTP_GET, handleReset);      // Hard/Brute Reset with cleanup
+    server.on("/stop", HTTP_GET, handleStop);        // Stop camera service and enter power-down
+    server.on("/start", HTTP_GET, handleStart);      // Start/restart camera service
+    
     // POST endpoint with body handler
     server.on("/wifi-connect", HTTP_POST, 
         [](AsyncWebServerRequest *request) {
@@ -186,7 +195,10 @@ void handleSleepStatus(AsyncWebServerRequest *request) {
 }
 
 void handleCapture(AsyncWebServerRequest *request) {
+    ESP_LOGI(TAG, "GET /capture - Single JPEG capture requested");
+    
     if (!camera_initialized || camera_sleeping) {
+        ESP_LOGW(TAG, "Camera not available for capture");
         AsyncWebServerResponse *response = request->beginResponse(503, "application/json", 
             "{\"error\":\"Camera is sleeping or not initialized\"}");
         addCORSHeaders(response);
@@ -196,12 +208,15 @@ void handleCapture(AsyncWebServerRequest *request) {
     
     camera_fb_t *fb = captureFrame();
     if (!fb) {
+        ESP_LOGE(TAG, "Failed to capture frame");
         AsyncWebServerResponse *response = request->beginResponse(500, "application/json", 
             "{\"error\":\"Failed to capture frame\"}");
         addCORSHeaders(response);
         request->send(response);
         return;
     }
+    
+    ESP_LOGI(TAG, "Captured image: %d bytes, %dx%d", fb->len, fb->width, fb->height);
     
     AsyncWebServerResponse *response = request->beginResponse(200, "image/jpeg", fb->buf, fb->len);
     addCORSHeaders(response);
@@ -212,17 +227,22 @@ void handleCapture(AsyncWebServerRequest *request) {
 }
 
 void handleStream(AsyncWebServerRequest *request) {
+    ESP_LOGI(TAG, "GET /stream - MJPEG stream requested");
+    
     if (!camera_initialized || camera_sleeping) {
+        ESP_LOGW(TAG, "Camera not available for streaming");
         request->send(503, "text/plain", "Camera is sleeping or not initialized");
         return;
     }
     
+    ESP_LOGI(TAG, "Starting MJPEG stream with zero-copy optimization");
+    
     AsyncWebServerResponse *response = request->beginChunkedResponse("multipart/x-mixed-replace; boundary=frame",
         [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
-            // Capture a new frame
-            camera_fb_t *fb = esp_camera_fb_get();
+            // Capture a new frame using zero-copy approach from custom I2S+DMA driver
+            camera_fb_t *fb = camera_i2s_fb_get();
             if (!fb) {
-                Serial.println("Camera capture failed");
+                ESP_LOGE(TAG, "Stream: Camera capture failed");
                 return 0; // End stream
             }
             
@@ -234,7 +254,8 @@ void handleStream(AsyncWebServerRequest *request) {
             
             // Check if buffer is large enough
             if (totalSize > maxLen) {
-                esp_camera_fb_return(fb);
+                camera_i2s_fb_return(fb);
+                ESP_LOGW(TAG, "Stream buffer too small for frame");
                 return 0;
             }
             
@@ -243,7 +264,7 @@ void handleStream(AsyncWebServerRequest *request) {
             memcpy(buffer + pos, header.c_str(), header.length());
             pos += header.length();
             
-            // Copy image data
+            // Copy image data (zero-copy where possible - data stays in PSRAM buffer)
             memcpy(buffer + pos, fb->buf, fb->len);
             pos += fb->len;
             
@@ -251,11 +272,11 @@ void handleStream(AsyncWebServerRequest *request) {
             buffer[pos++] = '\r';
             buffer[pos++] = '\n';
             
-            // Return frame buffer
-            esp_camera_fb_return(fb);
+            // Return frame buffer to pool immediately
+            camera_i2s_fb_return(fb);
             
-            // Small delay for frame rate control (~15 FPS)
-            delay(66);
+            // Frame rate control - target ~15 FPS
+            vTaskDelay(pdMS_TO_TICKS(STREAM_FRAME_DELAY_MS));
             
             return pos;
         });
@@ -278,43 +299,56 @@ void handleControl(AsyncWebServerRequest *request) {
     String var = request->getParam("var")->value();
     String val = request->getParam("val")->value();
     
-    sensor_t *s = esp_camera_sensor_get();
-    if (!s) {
+    if (!camera_initialized) {
         request->send(500, "application/json", "{\"error\":\"Camera not available\"}");
         return;
     }
     
-    int res = 0;
+    esp_err_t res = ESP_OK;
     
     if (var == "framesize") {
-        res = s->set_framesize(s, (framesize_t)val.toInt());
-        g_config.camera.framesize = val.toInt();
+        res = ov2640_set_framesize((framesize_t)val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.framesize = val.toInt();
+        }
     } else if (var == "quality") {
-        res = s->set_quality(s, val.toInt());
-        g_config.camera.quality = val.toInt();
+        res = ov2640_set_quality(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.quality = val.toInt();
+        }
     } else if (var == "brightness") {
-        res = s->set_brightness(s, val.toInt());
-        g_config.camera.brightness = val.toInt();
+        res = ov2640_set_brightness(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.brightness = val.toInt();
+        }
     } else if (var == "contrast") {
-        res = s->set_contrast(s, val.toInt());
-        g_config.camera.contrast = val.toInt();
+        res = ov2640_set_contrast(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.contrast = val.toInt();
+        }
     } else if (var == "saturation") {
-        res = s->set_saturation(s, val.toInt());
-        g_config.camera.saturation = val.toInt();
+        res = ov2640_set_saturation(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.saturation = val.toInt();
+        }
     } else if (var == "hmirror") {
-        res = s->set_hmirror(s, val.toInt());
-        g_config.camera.hmirror = val.toInt();
+        res = ov2640_set_hmirror(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.hmirror = val.toInt();
+        }
     } else if (var == "vflip") {
-        res = s->set_vflip(s, val.toInt());
-        g_config.camera.vflip = val.toInt();
+        res = ov2640_set_vflip(val.toInt());
+        if (res == ESP_OK) {
+            g_config.camera.vflip = val.toInt();
+        }
     } else if (var == "led_intensity") {
         int intensity = val.toInt();
         setLED(intensity);
         g_config.camera.led_intensity = intensity;
     }
     
-    String response = res == 0 ? "{\"success\":true}" : "{\"error\":\"Failed to set " + var + "\"}";
-    request->send(res == 0 ? 200 : 500, "application/json", response);
+    String response = (res == ESP_OK) ? "{\"success\":true}" : "{\"error\":\"Failed to set " + var + "\"}";
+    request->send((res == ESP_OK) ? 200 : 500, "application/json", response);
 }
 
 void handleSleep(AsyncWebServerRequest *request) {
@@ -464,5 +498,122 @@ void handleNotFound(AsyncWebServerRequest *request) {
         request->redirect("/");
     } else {
         request->send(404, "application/json", "{\"error\":\"Not found\"}");
+    }
+}
+
+// New endpoints as per requirements
+
+/**
+ * GET /reset - Hard/Brute Reset
+ * Performs a complete system reset with proper cleanup:
+ * 1. Deinitialize camera
+ * 2. Close all active sockets
+ * 3. Call esp_restart()
+ */
+void handleReset(AsyncWebServerRequest *request) {
+    ESP_LOGI(TAG, "GET /reset - Hard reset requested");
+    
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", 
+        "{\"success\":true,\"message\":\"Performing hard reset with cleanup...\"}");
+    addCORSHeaders(response);
+    request->send(response);
+    
+    ESP_LOGI(TAG, "Performing cleanup before reset...");
+    
+    // Give time for response to be sent
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    // Deinitialize camera to free resources and avoid memory corruption
+    if (camera_initialized) {
+        ESP_LOGI(TAG, "Deinitializing camera...");
+        deinitCamera();
+    }
+    
+    // Small delay to ensure camera cleanup
+    vTaskDelay(pdMS_TO_TICKS(100));
+    
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "HARD RESET - System restart initiated");
+    ESP_LOGI(TAG, "========================================");
+    
+    // Perform hard reset
+    esp_restart();
+}
+
+/**
+ * GET /stop - Stop camera service and enter power-down mode
+ * This endpoint:
+ * 1. Deinitializes the camera
+ * 2. Frees frame buffer memory
+ * 3. Puts OV2640 sensor in power-down mode via PWDN pin
+ * 4. Keeps WiFi active but reduces power consumption
+ */
+void handleStop(AsyncWebServerRequest *request) {
+    ESP_LOGI(TAG, "GET /stop - Stop camera service requested");
+    
+    if (!camera_initialized) {
+        ESP_LOGW(TAG, "Camera already stopped");
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", 
+            "{\"success\":true,\"message\":\"Camera service already stopped\"}");
+        addCORSHeaders(response);
+        request->send(response);
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Stopping camera service...");
+    
+    // Deinitialize camera (this also triggers power-down)
+    deinitCamera();
+    
+    // Enable WiFi power save mode for reduced consumption
+    esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+    ESP_LOGI(TAG, "WiFi power save mode enabled");
+    
+    ESP_LOGI(TAG, "Camera service stopped - power consumption reduced");
+    
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", 
+        "{\"success\":true,\"message\":\"Camera service stopped and sensor in power-down mode. WiFi remains active.\"}");
+    addCORSHeaders(response);
+    request->send(response);
+}
+
+/**
+ * GET /start - Start/restart camera service
+ * This endpoint:
+ * 1. If camera is running, forces camera_i2s_deinit() then camera_i2s_init()
+ * 2. If camera is stopped, initializes it
+ * 3. Ensures hardware is properly reset
+ * 4. Disables WiFi power save mode
+ */
+void handleStart(AsyncWebServerRequest *request) {
+    ESP_LOGI(TAG, "GET /start - Start camera service requested");
+    
+    // Disable WiFi power save mode for better performance
+    esp_wifi_set_ps(WIFI_PS_NONE);
+    ESP_LOGI(TAG, "WiFi power save mode disabled for streaming");
+    
+    bool success = false;
+    
+    if (camera_initialized) {
+        ESP_LOGI(TAG, "Camera already running - forcing reinitialization");
+        // Force complete reinitialization with custom I2S+DMA driver
+        success = reinitCamera();
+    } else {
+        ESP_LOGI(TAG, "Camera stopped - initializing");
+        success = initCamera();
+    }
+    
+    if (success) {
+        ESP_LOGI(TAG, "Camera service started successfully");
+        AsyncWebServerResponse *response = request->beginResponse(200, "application/json", 
+            "{\"success\":true,\"message\":\"Camera service started and ready for streaming\"}");
+        addCORSHeaders(response);
+        request->send(response);
+    } else {
+        ESP_LOGE(TAG, "Failed to start camera service");
+        AsyncWebServerResponse *response = request->beginResponse(500, "application/json", 
+            "{\"error\":\"Failed to start camera service\",\"message\":\"Check camera connections and power supply\"}");
+        addCORSHeaders(response);
+        request->send(response);
     }
 }

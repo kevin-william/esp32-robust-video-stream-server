@@ -26,6 +26,11 @@ void handleConfig(AsyncWebServerRequest *request);
 void handleOTA(AsyncWebServerRequest *request);
 void handleNotFound(AsyncWebServerRequest *request);
 
+// New endpoints as per requirements
+void handleReset(AsyncWebServerRequest *request);    // Hard/Brute Reset with cleanup
+void handleStop(AsyncWebServerRequest *request);     // Stop camera service and power-down
+void handleStart(AsyncWebServerRequest *request);    // Start/restart camera service
+
 // Stream helper functions
 void streamJPEG(AsyncWebServerRequest *request);
 
