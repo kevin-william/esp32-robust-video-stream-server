@@ -7,6 +7,7 @@ A complete, production-ready ESP32-CAM project featuring dual-core FreeRTOS arch
 - **Dual-Core FreeRTOS Architecture**: Core 0 dedicated to WiFi/HTTP, Core 1 dedicated to camera capture for maximum performance
 - **High-Performance Camera Driver**: I2S parallel mode with DMA, 2 frame buffers in PSRAM for zero-copy optimization
 - **MJPEG Streaming**: Real-time video streaming optimized for minimal CPU usage
+- **Motion-Activated Recording**: HC-SR501 PIR sensor support for automatic motion-triggered video recording to SD card
 - **Power Management**: Camera power-down mode (PWDN pin), WiFi power save modes, energy-efficient operation
 - **Advanced Endpoints**: /stream, /capture, /reset (hard reset with cleanup), /stop (power-down), /start (reinit)
 - **Captive Portal**: Automatic WiFi configuration portal when no saved networks are available
@@ -38,8 +39,9 @@ pio run -e wrover-kit
 
 ### Recommended Specs
 - ESP32 with PSRAM (for higher resolutions and frame buffers)
-- MicroSD card (optional, for configuration persistence)
+- MicroSD card (optional, for configuration persistence and motion recording)
 - Flash LED (built-in on ESP32-CAM)
+- HC-SR501 PIR Motion Sensor (optional, for motion-activated recording)
 
 ## Pin Configurations
 
@@ -65,6 +67,9 @@ pio run -e wrover-kit
 **LED:**
 - Flash LED: GPIO 4
 
+**Motion Sensor (HC-SR501):**
+- PIR OUT: GPIO 33
+
 ### ESP32-WROVER-KIT
 
 **Camera Pins:**
@@ -86,6 +91,31 @@ pio run -e wrover-kit
 
 **LED:**
 - Flash LED: -1 (not available by default)
+
+**Motion Sensor (HC-SR501):**
+- PIR OUT: GPIO 12
+
+## Motion-Activated Recording
+
+This project supports automatic motion-activated video recording using the HC-SR501 PIR motion sensor. When enabled:
+
+- Camera remains **OFF** when no motion (saves power)
+- **Automatically starts** recording when motion is detected
+- Records to SD card in lightweight MJPEG format
+- **Extends recording** if motion continues (timer resets)
+- Configurable recording duration (default: 5 seconds)
+
+**Requirements:**
+- SD card must be inserted and mounted
+- HC-SR501 sensor connected to GPIO 33 (AI-Thinker) or GPIO 12 (WROVER)
+
+**Quick Setup:**
+1. Connect HC-SR501 to GPIO 33 (or GPIO 12 for WROVER)
+2. Insert SD card
+3. Enable via API: `curl http://ESP32-IP/motion/enable`
+4. Restart device
+
+For detailed setup and configuration, see [Motion Sensor Documentation](docs/MOTION_SENSOR.md).
 
 ## Quick Start
 

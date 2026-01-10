@@ -32,6 +32,11 @@ void handleReset(AsyncWebServerRequest *request);  // Hard/Brute Reset with clea
 void handleStop(AsyncWebServerRequest *request);   // Stop camera service and power-down
 void handleStart(AsyncWebServerRequest *request);  // Start/restart camera service
 
+// Motion monitoring endpoints
+void handleMotionStatus(AsyncWebServerRequest *request);
+void handleMotionEnable(AsyncWebServerRequest *request);
+void handleMotionDisable(AsyncWebServerRequest *request);
+
 // Stream helper functions
 void streamJPEG(AsyncWebServerRequest *request);
 

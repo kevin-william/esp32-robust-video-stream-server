@@ -78,11 +78,19 @@ struct CameraSettings {
     int led_intensity;  // Flash LED 0-255
 };
 
+// Motion monitoring settings structure
+struct MotionSettings {
+    bool enabled;                  // Motion monitoring enabled
+    int recording_duration_sec;    // Duration to record after motion (seconds)
+    int debounce_ms;              // Debounce time for motion detection (milliseconds)
+};
+
 // System configuration structure
 struct SystemConfig {
     WiFiNetwork networks[MAX_WIFI_NETWORKS];
     int network_count;
     CameraSettings camera;
+    MotionSettings motion;
     char admin_password_hash[65];  // SHA256 hash
     bool ota_enabled;
     char ota_password[32];

@@ -22,6 +22,7 @@
 #include "camera_pins.h"
 #include "captive_portal.h"
 #include "config.h"
+#include "motion_sensor.h"
 #include "storage.h"
 #include "web_server.h"
 
@@ -32,6 +33,7 @@ TaskHandle_t cameraTaskHandle = NULL;
 TaskHandle_t webServerTaskHandle = NULL;
 TaskHandle_t watchdogTaskHandle = NULL;
 TaskHandle_t sdTaskHandle = NULL;
+TaskHandle_t motionMonitoringTaskHandle = NULL;
 
 SemaphoreHandle_t cameraMutex = NULL;
 SemaphoreHandle_t configMutex = NULL;
@@ -43,6 +45,9 @@ unsigned long camera_init_time = 0;
 unsigned long system_start_time = 0;
 bool ap_mode_active = false;
 bool wifi_connected = false;
+
+bool motion_monitoring_active = false;
+bool motion_recording_active = false;
 
 SystemConfig g_config;
 bool g_config_loaded = false;
@@ -136,17 +141,34 @@ void setup() {
         Serial.print("IP Address: ");
         Serial.println(WiFi.localIP());
 
-        // Initialize camera only after WiFi connection
-        ESP_LOGI(TAG, "Initializing camera subsystem...");
-        Serial.println("Initializing camera...");
-        if (initCamera()) {
-            ESP_LOGI(TAG, "Camera initialized successfully!");
-            Serial.println("Camera initialized successfully!");
-            camera_initialized = true;
+        // Check if motion monitoring should be enabled
+        bool enable_motion_monitoring = sdMounted && g_config.motion.enabled;
+        
+        if (enable_motion_monitoring) {
+            ESP_LOGI(TAG, "Motion monitoring enabled - camera will start on motion detection");
+            Serial.println("Motion monitoring mode: Camera will start when motion is detected");
+            
+            // Initialize motion sensor
+            if (initMotionSensor()) {
+                motion_monitoring_active = true;
+                ESP_LOGI(TAG, "Motion sensor initialized successfully");
+            } else {
+                ESP_LOGE(TAG, "Failed to initialize motion sensor");
+                enable_motion_monitoring = false;
+            }
         } else {
-            ESP_LOGE(TAG, "Camera initialization failed - check connections");
-            Serial.println("ERROR: Camera initialization failed - check connections");
-            camera_initialized = false;
+            // Normal mode: Initialize camera immediately
+            ESP_LOGI(TAG, "Initializing camera subsystem...");
+            Serial.println("Initializing camera...");
+            if (initCamera()) {
+                ESP_LOGI(TAG, "Camera initialized successfully!");
+                Serial.println("Camera initialized successfully!");
+                camera_initialized = true;
+            } else {
+                ESP_LOGE(TAG, "Camera initialization failed - check connections");
+                Serial.println("ERROR: Camera initialization failed - check connections");
+                camera_initialized = false;
+            }
         }
     }
 
@@ -179,6 +201,15 @@ void setup() {
     );
     ESP_LOGI(TAG, "Watchdog task created on Core %d", WEB_CORE);
 
+    // Create motion monitoring task if enabled
+    if (motion_monitoring_active) {
+        xTaskCreatePinnedToCore(motionMonitoringTask, "MotionMonitorTask", 8192, NULL,
+                                CAMERA_TASK_PRIORITY, &motionMonitoringTaskHandle,
+                                CAMERA_CORE  // Core 1 (APP_CPU) - needs camera access
+        );
+        ESP_LOGI(TAG, "Motion monitoring task created on Core %d", CAMERA_CORE);
+    }
+
     ESP_LOGI(TAG, "All FreeRTOS tasks created successfully");
     ESP_LOGI(TAG, "====================================");
     ESP_LOGI(TAG, "System ready!");
@@ -186,6 +217,10 @@ void setup() {
     ESP_LOGI(TAG, "Architecture:");
     ESP_LOGI(TAG, "  Core 0 (PRO_CPU): WiFi + HTTP Server");
     ESP_LOGI(TAG, "  Core 1 (APP_CPU): Camera + Image Processing");
+    if (motion_monitoring_active) {
+        ESP_LOGI(TAG, "  Motion Monitoring: ENABLED");
+        ESP_LOGI(TAG, "  Recording Duration: %d seconds", g_config.motion.recording_duration_sec);
+    }
     ESP_LOGI(TAG, "====================================");
 
     ESP_LOGI(TAG, "System initialization complete");

@@ -36,6 +36,11 @@ void setDefaultConfiguration() {
     g_config.camera.lenc = 1;
     g_config.camera.led_intensity = 0;
 
+    // Motion monitoring defaults
+    g_config.motion.enabled = false;
+    g_config.motion.recording_duration_sec = 5;
+    g_config.motion.debounce_ms = 200;
+
     // System defaults
     strcpy(g_config.admin_password_hash, "");
     g_config.ota_enabled = false;
@@ -174,6 +179,14 @@ parse_config:
         g_config.camera.led_intensity = camera["led_intensity"] | 0;
     }
 
+    // Parse motion settings
+    if (doc.containsKey("motion")) {
+        JsonObjectConst motion = doc["motion"].as<JsonObjectConst>();
+        g_config.motion.enabled = motion["enabled"] | false;
+        g_config.motion.recording_duration_sec = motion["recording_duration_sec"] | 5;
+        g_config.motion.debounce_ms = motion["debounce_ms"] | 200;
+    }
+
     // Parse system settings
     if (doc.containsKey("admin_password_hash")) {
         strncpy(g_config.admin_password_hash, doc["admin_password_hash"], 64);
@@ -239,6 +252,12 @@ bool saveConfiguration() {
     camera["raw_gma"] = g_config.camera.raw_gma;
     camera["lenc"] = g_config.camera.lenc;
     camera["led_intensity"] = g_config.camera.led_intensity;
+
+    // Build motion settings
+    JsonObject motion = doc.createNestedObject("motion");
+    motion["enabled"] = g_config.motion.enabled;
+    motion["recording_duration_sec"] = g_config.motion.recording_duration_sec;
+    motion["debounce_ms"] = g_config.motion.debounce_ms;
 
     // System settings
     doc["admin_password_hash"] = g_config.admin_password_hash;

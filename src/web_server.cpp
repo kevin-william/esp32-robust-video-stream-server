@@ -9,6 +9,8 @@
 #include "camera_i2s.h"
 #include "captive_portal.h"
 #include "config.h"
+#include "motion_sensor.h"
+#include "storage.h"
 
 static const char *TAG = "WEB_SERVER";
 
@@ -202,6 +204,11 @@ void initWebServer() {
             handleWiFiConnect(request, data, len, index, total);
         });
 
+    // Motion monitoring endpoints
+    server.on("/motion/status", HTTP_GET, handleMotionStatus);
+    server.on("/motion/enable", HTTP_GET, handleMotionEnable);
+    server.on("/motion/disable", HTTP_GET, handleMotionDisable);
+
     server.onNotFound(handleNotFound);
 
     server.begin();
@@ -228,6 +235,11 @@ void handleStatus(AsyncWebServerRequest *request) {
 
     doc["ap_mode"] = ap_mode_active;
     doc["reset_reason"] = getResetReason();
+    
+    // Motion monitoring status
+    doc["motion_monitoring_enabled"] = g_config.motion.enabled;
+    doc["motion_monitoring_active"] = motion_monitoring_active;
+    doc["sd_card_mounted"] = isSDCardMounted();
 
     JsonArray networks = doc.createNestedArray("known_networks");
     for (int i = 0; i < g_config.network_count; i++) {
@@ -701,3 +713,63 @@ void handleStart(AsyncWebServerRequest *request) {
         request->send(response);
     }
 }
+
+// Motion monitoring status endpoint
+void handleMotionStatus(AsyncWebServerRequest *request) {
+    StaticJsonDocument<512> doc;
+    
+    doc["motion_monitoring_enabled"] = g_config.motion.enabled;
+    doc["motion_monitoring_active"] = motion_monitoring_active;
+    doc["motion_recording_active"] = motion_recording_active;
+    doc["sd_card_mounted"] = isSDCardMounted();
+    doc["recording_duration_sec"] = g_config.motion.recording_duration_sec;
+    
+    if (motion_monitoring_active) {
+        doc["time_since_last_motion_ms"] = getTimeSinceLastMotion();
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    
+    AsyncWebServerResponse *resp = request->beginResponse(200, "application/json", response);
+    addCORSHeaders(resp);
+    request->send(resp);
+}
+
+// Enable motion monitoring
+void handleMotionEnable(AsyncWebServerRequest *request) {
+    if (!isSDCardMounted()) {
+        AsyncWebServerResponse *response = request->beginResponse(
+            400, "application/json",
+            "{\"error\":\"Cannot enable motion monitoring without SD card\"}");
+        addCORSHeaders(response);
+        request->send(response);
+        return;
+    }
+    
+    g_config.motion.enabled = true;
+    saveConfiguration();
+    
+    ESP_LOGI(TAG, "Motion monitoring enabled via API - restart required");
+    
+    AsyncWebServerResponse *response = request->beginResponse(
+        200, "application/json",
+        "{\"success\":true,\"message\":\"Motion monitoring enabled. Please restart device for changes to take effect.\"}");
+    addCORSHeaders(response);
+    request->send(response);
+}
+
+// Disable motion monitoring
+void handleMotionDisable(AsyncWebServerRequest *request) {
+    g_config.motion.enabled = false;
+    saveConfiguration();
+    
+    ESP_LOGI(TAG, "Motion monitoring disabled via API - restart required");
+    
+    AsyncWebServerResponse *response = request->beginResponse(
+        200, "application/json",
+        "{\"success\":true,\"message\":\"Motion monitoring disabled. Please restart device for changes to take effect.\"}");
+    addCORSHeaders(response);
+    request->send(response);
+}
+
