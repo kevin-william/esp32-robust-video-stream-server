@@ -2,8 +2,8 @@
 #define CAPTIVE_PORTAL_H
 
 #include <Arduino.h>
-#include <WiFi.h>
 #include <DNSServer.h>
+#include <WiFi.h>
 
 // DNS Server for captive portal
 extern DNSServer dnsServer;
@@ -20,9 +20,8 @@ void stopAPMode();
 
 // WiFi connection
 bool connectToWiFi(const char* ssid, const char* password, int timeout_ms = 20000);
-bool connectToWiFiWithStaticIP(const char* ssid, const char* password, 
-                                IPAddress ip, IPAddress gateway, 
-                                int timeout_ms = 20000);
+bool connectToWiFiWithStaticIP(const char* ssid, const char* password, IPAddress ip,
+                               IPAddress gateway, int timeout_ms = 20000);
 bool tryConnectSavedNetworks();
 
-#endif // CAPTIVE_PORTAL_H
+#endif  // CAPTIVE_PORTAL_H

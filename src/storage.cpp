@@ -1,5 +1,7 @@
 #include "storage.h"
+
 #include <SPI.h>
+
 #include "camera_pins.h"
 
 static bool sd_mounted = false;
@@ -8,20 +10,20 @@ static Preferences preferences;
 bool initSDCard() {
     // Initialize SPI for SD card
     SPI.begin(SD_SCK_PIN, SD_MISO_PIN, SD_MOSI_PIN, SD_CS_PIN);
-    
+
     if (!SD.begin(SD_CS_PIN)) {
         Serial.println("SD Card mount failed");
         sd_mounted = false;
         return false;
     }
-    
+
     uint8_t cardType = SD.cardType();
     if (cardType == CARD_NONE) {
         Serial.println("No SD card attached");
         sd_mounted = false;
         return false;
     }
-    
+
     Serial.print("SD Card Type: ");
     if (cardType == CARD_MMC) {
         Serial.println("MMC");
@@ -32,10 +34,10 @@ bool initSDCard() {
     } else {
         Serial.println("UNKNOWN");
     }
-    
+
     uint64_t cardSize = SD.cardSize() / (1024 * 1024);
     Serial.printf("SD Card Size: %lluMB\n", cardSize);
-    
+
     sd_mounted = true;
     return true;
 }
@@ -52,46 +54,50 @@ bool isSDCardMounted() {
 }
 
 bool fileExists(const char* path) {
-    if (!sd_mounted) return false;
+    if (!sd_mounted)
+        return false;
     return SD.exists(path);
 }
 
 String readFile(const char* path) {
-    if (!sd_mounted) return "";
-    
+    if (!sd_mounted)
+        return "";
+
     File file = SD.open(path, FILE_READ);
     if (!file) {
         Serial.printf("Failed to open file for reading: %s\n", path);
         return "";
     }
-    
+
     String content = "";
     while (file.available()) {
         content += (char)file.read();
     }
-    
+
     file.close();
     return content;
 }
 
 bool writeFile(const char* path, const String& content) {
-    if (!sd_mounted) return false;
-    
+    if (!sd_mounted)
+        return false;
+
     File file = SD.open(path, FILE_WRITE);
     if (!file) {
         Serial.printf("Failed to open file for writing: %s\n", path);
         return false;
     }
-    
+
     size_t bytesWritten = file.print(content);
     file.close();
-    
+
     return bytesWritten == content.length();
 }
 
 bool deleteFile(const char* path) {
-    if (!sd_mounted) return false;
-    
+    if (!sd_mounted)
+        return false;
+
     if (SD.exists(path)) {
         return SD.remove(path);
     }
@@ -99,8 +105,9 @@ bool deleteFile(const char* path) {
 }
 
 bool createDirectory(const char* path) {
-    if (!sd_mounted) return false;
-    
+    if (!sd_mounted)
+        return false;
+
     if (!SD.exists(path)) {
         return SD.mkdir(path);
     }

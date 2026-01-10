@@ -1,33 +1,49 @@
 # ESP32-CAM Robust Video Stream Server
 
-A complete, production-ready ESP32-CAM project featuring multi-core task management, configuration persistence, captive portal WiFi setup, REST API, MJPEG streaming, and OTA updates.
+A complete, production-ready ESP32-CAM project featuring dual-core FreeRTOS architecture, I2S+DMA camera driver, configuration persistence, captive portal WiFi setup, REST API, MJPEG streaming with zero-copy optimization, and comprehensive power management.
 
 ## Features
 
-- **Multi-Core FreeRTOS Architecture**: Separate tasks for camera (Core 1) and web server (Core 0) for optimal performance
+- **Dual-Core FreeRTOS Architecture**: Core 0 dedicated to WiFi/HTTP, Core 1 dedicated to camera capture for maximum performance
+- **High-Performance Camera Driver**: I2S parallel mode with DMA, 2 frame buffers in PSRAM for zero-copy optimization
+- **MJPEG Streaming**: Real-time video streaming optimized for minimal CPU usage
+- **Power Management**: Camera power-down mode (PWDN pin), WiFi power save modes, energy-efficient operation
+- **Advanced Endpoints**: /stream, /capture, /reset (hard reset with cleanup), /stop (power-down), /start (reinit)
 - **Captive Portal**: Automatic WiFi configuration portal when no saved networks are available
 - **Configuration Persistence**: Save/load settings from SD card with NVS fallback
 - **REST API**: Comprehensive JSON API with CORS support for camera control
-- **MJPEG Streaming**: Real-time video streaming at configurable frame rates
-- **OTA Updates**: Over-the-air firmware updates
-- **Sleep/Wake**: Power management with camera sleep/wake functionality
+- **Detailed Logging**: ESP_LOGI logging throughout for debugging and monitoring
 - **LED Control**: Flash LED control with adjustable intensity
-- **Memory Optimized**: Designed for ESP32 constraints with PSRAM support
+- **Memory Optimized**: Strict memory management to prevent leaks, designed for ESP32 constraints with PSRAM support
 
 ## Hardware Requirements
 
 ### Supported Boards
-- ESP32-CAM (AI-Thinker) - **Primary target**
-- ESP32-WROVER-KIT
+
+#### ESP32-CAM (AI-Thinker) - Default
+The primary development and testing platform. Features built-in OV2640 camera, flash LED, and microSD slot.
+
+#### ESP32-WROVER-KIT
+Official Espressif development board with camera support. Features PSRAM, JTAG debugging, and LCD display.
+
+To build for WROVER-KIT:
+```bash
+pio run -e wrover-kit
+```
+
+#### Other Boards
 - ESP-EYE
-- Other ESP32 boards with camera support
+- M5Stack Camera
+- Custom ESP32 boards with camera
 
 ### Recommended Specs
-- ESP32 with PSRAM (for higher resolutions)
+- ESP32 with PSRAM (for higher resolutions and frame buffers)
 - MicroSD card (optional, for configuration persistence)
 - Flash LED (built-in on ESP32-CAM)
 
-### Pin Configuration (ESP32-CAM AI-Thinker)
+## Pin Configurations
+
+### ESP32-CAM (AI-Thinker)
 
 **Camera Pins:**
 - PWDN: GPIO 32
@@ -49,6 +65,28 @@ A complete, production-ready ESP32-CAM project featuring multi-core task managem
 **LED:**
 - Flash LED: GPIO 4
 
+### ESP32-WROVER-KIT
+
+**Camera Pins:**
+- PWDN: -1 (not used)
+- RESET: -1 (not used)
+- XCLK: GPIO 21
+- SIOD (SDA): GPIO 26
+- SIOC (SCL): GPIO 27
+- Y9-Y2: GPIOs 35, 34, 39, 36, 19, 18, 5, 4
+- VSYNC: GPIO 25
+- HREF: GPIO 23
+- PCLK: GPIO 22
+
+**SD Card Pins:**
+- CS: GPIO 13
+- MOSI: GPIO 15
+- MISO: GPIO 2
+- SCK: GPIO 14
+
+**LED:**
+- Flash LED: -1 (not available by default)
+
 ## Quick Start
 
 ### Installation
@@ -60,11 +98,17 @@ A complete, production-ready ESP32-CAM project featuring multi-core task managem
 git clone https://github.com/kevin-william/esp32-robust-video-stream-server.git
 cd esp32-robust-video-stream-server
 
-# Install dependencies and build
+# Install dependencies and build (ESP32-CAM by default)
 pio run
+
+# Build for ESP32-WROVER-KIT
+pio run -e wrover-kit
 
 # Upload to ESP32-CAM
 pio run --target upload
+
+# Upload to WROVER-KIT
+pio run -e wrover-kit --target upload
 
 # Monitor serial output
 pio device monitor -b 115200
@@ -219,6 +263,63 @@ Wake camera from sleep (reinitialize).
 curl http://<ESP32-IP>/wake
 ```
 
+#### GET /reset
+Perform a hard/brute reset with proper cleanup. This endpoint:
+1. Deinitializes the camera to free resources
+2. Closes all active sockets to prevent memory corruption
+3. Calls `esp_restart()` to perform a complete system reset
+
+```bash
+curl http://<ESP32-IP>/reset
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Performing hard reset with cleanup..."
+}
+```
+
+#### GET /stop
+Stop the camera service and enter power-down mode. This endpoint:
+1. Deinitializes the camera driver
+2. Frees frame buffer memory
+3. Puts the OV2640 sensor in power-down mode via PWDN pin
+4. Enables WiFi power save mode to reduce consumption
+5. WiFi remains active for receiving commands
+
+```bash
+curl http://<ESP32-IP>/stop
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Camera service stopped and sensor in power-down mode. WiFi remains active."
+}
+```
+
+#### GET /start
+Start or restart the camera service. This endpoint:
+1. If camera is running, forces complete reinitialization (deinit + init)
+2. If camera is stopped, initializes it normally
+3. Disables WiFi power save mode for optimal streaming performance
+4. Ensures hardware is properly reset
+
+```bash
+curl http://<ESP32-IP>/start
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Camera service started and ready for streaming"
+}
+```
+
 ### WiFi Management
 
 #### GET /wifi-scan
@@ -301,29 +402,50 @@ Configuration is stored in `/config/config.json` on the SD card, or in NVS flash
 
 ## Architecture
 
-### Multi-Core Task Design
+### Dual-Core Task Design
 
-The project uses FreeRTOS tasks pinned to specific cores:
+The project uses FreeRTOS tasks with strict core pinning for maximum efficiency:
 
-- **Core 0 (Protocol CPU)**:
-  - Web Server Task - Handles HTTP requests
-  - Watchdog Task - Monitors system health
-  - SD Card Task - Manages storage operations
+- **Core 0 (PRO_CPU) - Network & Services**:
+  - Web Server Task - Handles all HTTP requests and responses
+  - Watchdog Task - Monitors system health and memory
+  - WiFi Stack - ESP32 WiFi driver (automatic)
+  - **Purpose**: Dedicated exclusively to network operations and HTTP serving
 
-- **Core 1 (Application CPU)**:
-  - Camera Task - Handles frame capture and processing
+- **Core 1 (APP_CPU) - Camera & Image Processing**:
+  - Camera Task - Handles frame capture and sensor management
+  - OV2640 Control - Camera sensor configuration and control
+  - **Purpose**: Dedicated exclusively to camera operations and image processing
+
+### Camera Driver Configuration
+
+- **Interface**: I2S parallel mode with DMA for high-speed data transfer
+- **Frame Buffers**: 2 buffers allocated in PSRAM (when available)
+- **Buffer Location**: `CAMERA_FB_IN_PSRAM` for zero-copy optimization
+- **Grab Mode**: `CAMERA_GRAB_LATEST` to always get the freshest frame
+- **Format**: MJPEG (JPEG compressed frames) for minimal CPU overhead
+- **PWDN Control**: GPIO 32 used for hardware power-down of OV2640 sensor
 
 ### Memory Management
 
-- Frame buffers are acquired with mutex protection
+- Frame buffers acquired with mutex protection for thread safety
 - Buffers released immediately after use (`esp_camera_fb_return()`)
-- PSRAM used when available for larger frame buffers
+- PSRAM used when available for 2 frame buffers (double buffering)
+- Strict memory management to prevent leaks during start/stop cycles
 - Configuration limited to 2KB JSON to minimize heap usage
+
+### Power Management
+
+- **Camera Power-Down**: PWDN pin (GPIO 32) controls OV2640 power state
+- **WiFi Power Save**: `WIFI_PS_MIN_MODEM` when camera stopped, `WIFI_PS_NONE` when streaming
+- **Memory Release**: All frame buffers freed when camera is stopped
+- **Low Power Mode**: Complete shutdown of camera subsystem via `/stop` endpoint
 
 ### Inter-Task Communication
 
-- **Mutexes**: Protect camera and config access
-- **Queues**: Event-driven architecture for WiFi, config updates, OTA
+- **Camera Mutex**: Protects camera hardware access between cores
+- **Config Mutex**: Protects configuration data access
+- **Event Queue**: Event-driven architecture for WiFi, config updates, system events
 - **Event Types**: WiFi connected/disconnected, config updated, restart requested
 
 ## Development

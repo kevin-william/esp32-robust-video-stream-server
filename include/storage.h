@@ -2,9 +2,9 @@
 #define STORAGE_H
 
 #include <Arduino.h>
-#include <SD.h>
 #include <FS.h>
 #include <Preferences.h>
+#include <SD.h>
 
 // SD Card management
 bool initSDCard();
@@ -23,4 +23,4 @@ bool saveToNVS(const char* key, const String& value);
 String readFromNVS(const char* key, const String& defaultValue = "");
 bool clearNVS();
 
-#endif // STORAGE_H
+#endif  // STORAGE_H
