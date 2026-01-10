@@ -36,6 +36,10 @@
 #    define SD_MOSI_PIN 15
 #    define SD_MISO_PIN 2
 #    define SD_SCK_PIN 14
+
+// Motion Sensor (HC-SR501) pin
+// GPIO 33 chosen as best option - it's input-only safe, not used by camera/SD
+#    define PIR_SENSOR_PIN 33
 #endif
 
 // ESP32-WROVER-KIT Pin Map
@@ -67,6 +71,10 @@
 #    define SD_MOSI_PIN 15
 #    define SD_MISO_PIN 2
 #    define SD_SCK_PIN 14
+
+// Motion Sensor (HC-SR501) pin
+// GPIO 12 chosen as best option for WROVER (no boot constraints like AI-Thinker)
+#    define PIR_SENSOR_PIN 12
 #endif
 
 #endif  // CAMERA_PINS_H

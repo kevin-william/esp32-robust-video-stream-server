@@ -23,4 +23,10 @@ bool saveToNVS(const char* key, const String& value);
 String readFromNVS(const char* key, const String& defaultValue = "");
 bool clearNVS();
 
+// Video recording operations
+bool initVideoRecording(const char* filename);
+bool writeFrameToVideo(const uint8_t* frameData, size_t frameSize);
+bool finalizeVideoRecording();
+bool isVideoRecording();
+
 #endif  // STORAGE_H

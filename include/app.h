@@ -14,6 +14,7 @@ extern TaskHandle_t cameraTaskHandle;
 extern TaskHandle_t webServerTaskHandle;
 extern TaskHandle_t watchdogTaskHandle;
 extern TaskHandle_t sdTaskHandle;
+extern TaskHandle_t motionMonitoringTaskHandle;
 
 // Synchronization primitives
 extern SemaphoreHandle_t cameraMutex;
@@ -24,6 +25,10 @@ extern QueueHandle_t eventQueue;
 extern bool camera_initialized;
 extern bool camera_sleeping;
 extern unsigned long camera_init_time;
+
+// Motion monitoring state
+extern bool motion_monitoring_active;
+extern bool motion_recording_active;
 
 // System state
 extern unsigned long system_start_time;
@@ -54,6 +59,7 @@ void cameraTask(void* parameter);
 void webServerTask(void* parameter);
 void watchdogTask(void* parameter);
 void sdCardTask(void* parameter);
+void motionMonitoringTask(void* parameter);
 
 // Camera functions
 bool initCamera();

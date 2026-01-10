@@ -135,3 +135,109 @@ bool clearNVS() {
     preferences.end();
     return success;
 }
+
+// ============================================================================
+// Video Recording Functions
+// ============================================================================
+
+static File videoFile;
+static bool recording_active = false;
+static unsigned long frame_count = 0;
+
+/**
+ * Initialize video recording to a new file
+ * Creates an MJPEG file with basic header
+ *
+ * @param filename Path to the video file
+ * @return true if successful, false otherwise
+ */
+bool initVideoRecording(const char* filename) {
+    if (!sd_mounted) {
+        Serial.println("Cannot record: SD card not mounted");
+        return false;
+    }
+    
+    if (recording_active) {
+        Serial.println("Recording already active, finalizing previous file");
+        finalizeVideoRecording();
+    }
+    
+    // Create recordings directory if it doesn't exist
+    if (!SD.exists("/recordings")) {
+        SD.mkdir("/recordings");
+    }
+    
+    // Open file for writing
+    videoFile = SD.open(filename, FILE_WRITE);
+    if (!videoFile) {
+        Serial.printf("Failed to create video file: %s\n", filename);
+        return false;
+    }
+    
+    recording_active = true;
+    frame_count = 0;
+    
+    Serial.printf("Started video recording: %s\n", filename);
+    return true;
+}
+
+/**
+ * Write a JPEG frame to the video file
+ * Uses MJPEG format (motion JPEG - sequence of JPEG frames)
+ *
+ * @param frameData Pointer to JPEG frame data
+ * @param frameSize Size of frame data in bytes
+ * @return true if successful, false otherwise
+ */
+bool writeFrameToVideo(const uint8_t* frameData, size_t frameSize) {
+    if (!recording_active || !videoFile) {
+        Serial.println("Cannot write frame: recording not active");
+        return false;
+    }
+    
+    // Write frame size as 4-byte header (for MJPEG parsing)
+    uint32_t size = frameSize;
+    videoFile.write((uint8_t*)&size, 4);
+    
+    // Write frame data
+    size_t written = videoFile.write(frameData, frameSize);
+    
+    if (written != frameSize) {
+        Serial.printf("Frame write incomplete: %d/%d bytes\n", written, frameSize);
+        return false;
+    }
+    
+    frame_count++;
+    return true;
+}
+
+/**
+ * Finalize and close the video recording
+ * Flushes buffers and closes the file
+ *
+ * @return true if successful, false otherwise
+ */
+bool finalizeVideoRecording() {
+    if (!recording_active || !videoFile) {
+        return false;
+    }
+    
+    videoFile.flush();
+    videoFile.close();
+    
+    Serial.printf("Video recording finalized: %lu frames\n", frame_count);
+    
+    recording_active = false;
+    frame_count = 0;
+    
+    return true;
+}
+
+/**
+ * Check if video recording is currently active
+ *
+ * @return true if recording, false otherwise
+ */
+bool isVideoRecording() {
+    return recording_active;
+}
