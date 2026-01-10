@@ -58,8 +58,8 @@ void IRAM_ATTR motionDetectedISR() {
 bool initMotionSensor() {
     ESP_LOGI(TAG, "Initializing HC-SR501 PIR motion sensor on GPIO %d", PIR_SENSOR_PIN);
     
-    // Configure pin as input with internal pull-down
-    pinMode(PIR_SENSOR_PIN, INPUT_PULLDOWN);
+    // Configure pin as input (HC-SR501 has internal pull-up, no pull needed)
+    pinMode(PIR_SENSOR_PIN, INPUT);
     
     // Attach interrupt on rising edge (motion detected)
     attachInterrupt(digitalPinToInterrupt(PIR_SENSOR_PIN), motionDetectedISR, RISING);
