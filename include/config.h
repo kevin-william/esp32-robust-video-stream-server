@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#include "esp_camera.h"
+#include "camera_i2s.h"
 
 // Configuration file paths
 #define CONFIG_FILE_PATH "/config/config.json"

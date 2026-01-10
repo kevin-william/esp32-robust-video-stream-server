@@ -229,6 +229,13 @@ esp_err_t ov2640_set_framesize(framesize_t framesize) {
             sccb_write_reg(VSIZE, 288 & 0xFF);
             break;
 
+        case FRAMESIZE_HVGA:  // 480x320
+            sccb_write_reg(HSIZE8, 480 >> 3);
+            sccb_write_reg(VSIZE8, 320 >> 3);
+            sccb_write_reg(HSIZE, 480 & 0xFF);
+            sccb_write_reg(VSIZE, 320 & 0xFF);
+            break;
+
         case FRAMESIZE_VGA:  // 640x480
             sccb_write_reg(HSIZE8, 640 >> 3);
             sccb_write_reg(VSIZE8, 480 >> 3);
@@ -351,8 +358,8 @@ static esp_err_t i2s_camera_config(const camera_config_t *config) {
                                .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
                                .communication_format = I2S_COMM_FORMAT_STAND_I2S,
                                .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1 | ESP_INTR_FLAG_IRAM,
-                               .dma_buf_count = config->dma_buffer_count,
-                               .dma_buf_len = config->dma_buffer_size,
+                               .dma_buf_count = (int)config->dma_buffer_count,
+                               .dma_buf_len = (int)config->dma_buffer_size,
                                .use_apll = true,
                                .tx_desc_auto_clear = false,
                                .fixed_mclk = 0};
@@ -404,11 +411,13 @@ static esp_err_t i2s_camera_config(const camera_config_t *config) {
 static esp_err_t xclk_init(int pin, uint32_t freq) {
     ESP_LOGI(TAG, "Initializing XCLK at %d Hz on pin %d", freq, pin);
 
-    ledc_timer_config_t ledc_timer = {.speed_mode = LEDC_LOW_SPEED_MODE,
-                                      .timer_num = LEDC_TIMER_0,
-                                      .duty_resolution = LEDC_TIMER_1_BIT,
-                                      .freq_hz = freq,
-                                      .clk_cfg = LEDC_AUTO_CLK};
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .duty_resolution = LEDC_TIMER_1_BIT,
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = freq,
+        .clk_cfg = LEDC_AUTO_CLK
+    };
 
     esp_err_t err = ledc_timer_config(&ledc_timer);
     if (err != ESP_OK) {

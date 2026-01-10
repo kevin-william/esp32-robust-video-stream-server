@@ -23,6 +23,7 @@ typedef struct {
 typedef enum {
     FRAMESIZE_QVGA,  // 320x240
     FRAMESIZE_CIF,   // 352x288
+    FRAMESIZE_HVGA,  // 480x320
     FRAMESIZE_VGA,   // 640x480
     FRAMESIZE_SVGA,  // 800x600
     FRAMESIZE_UXGA,  // 1600x1200

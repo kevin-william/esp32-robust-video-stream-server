@@ -12,8 +12,8 @@
  * - 2 frame buffers em PSRAM para double buffering
  * - Formato MJPEG para compressão eficiente
  *
- * Autor: ESP32-CAM Project
- * Data: 2026
+ * Autor: Kevin Rodrigues
+ * Data: 2025/2026
  * ============================================================================
  */
 

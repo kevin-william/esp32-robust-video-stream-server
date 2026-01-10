@@ -19,17 +19,31 @@ A complete, production-ready ESP32-CAM project featuring dual-core FreeRTOS arch
 ## Hardware Requirements
 
 ### Supported Boards
-- ESP32-CAM (AI-Thinker) - **Primary target**
-- ESP32-WROVER-KIT
+
+#### ESP32-CAM (AI-Thinker) - Default
+The primary development and testing platform. Features built-in OV2640 camera, flash LED, and microSD slot.
+
+#### ESP32-WROVER-KIT
+Official Espressif development board with camera support. Features PSRAM, JTAG debugging, and LCD display.
+
+To build for WROVER-KIT:
+```bash
+pio run -e wrover-kit
+```
+
+#### Other Boards
 - ESP-EYE
-- Other ESP32 boards with camera support
+- M5Stack Camera
+- Custom ESP32 boards with camera
 
 ### Recommended Specs
-- ESP32 with PSRAM (for higher resolutions)
+- ESP32 with PSRAM (for higher resolutions and frame buffers)
 - MicroSD card (optional, for configuration persistence)
 - Flash LED (built-in on ESP32-CAM)
 
-### Pin Configuration (ESP32-CAM AI-Thinker)
+## Pin Configurations
+
+### ESP32-CAM (AI-Thinker)
 
 **Camera Pins:**
 - PWDN: GPIO 32
@@ -51,6 +65,28 @@ A complete, production-ready ESP32-CAM project featuring dual-core FreeRTOS arch
 **LED:**
 - Flash LED: GPIO 4
 
+### ESP32-WROVER-KIT
+
+**Camera Pins:**
+- PWDN: -1 (not used)
+- RESET: -1 (not used)
+- XCLK: GPIO 21
+- SIOD (SDA): GPIO 26
+- SIOC (SCL): GPIO 27
+- Y9-Y2: GPIOs 35, 34, 39, 36, 19, 18, 5, 4
+- VSYNC: GPIO 25
+- HREF: GPIO 23
+- PCLK: GPIO 22
+
+**SD Card Pins:**
+- CS: GPIO 13
+- MOSI: GPIO 15
+- MISO: GPIO 2
+- SCK: GPIO 14
+
+**LED:**
+- Flash LED: -1 (not available by default)
+
 ## Quick Start
 
 ### Installation
@@ -62,11 +98,17 @@ A complete, production-ready ESP32-CAM project featuring dual-core FreeRTOS arch
 git clone https://github.com/kevin-william/esp32-robust-video-stream-server.git
 cd esp32-robust-video-stream-server
 
-# Install dependencies and build
+# Install dependencies and build (ESP32-CAM by default)
 pio run
+
+# Build for ESP32-WROVER-KIT
+pio run -e wrover-kit
 
 # Upload to ESP32-CAM
 pio run --target upload
+
+# Upload to WROVER-KIT
+pio run -e wrover-kit --target upload
 
 # Monitor serial output
 pio device monitor -b 115200
